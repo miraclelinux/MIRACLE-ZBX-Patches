@@ -1,0 +1,1001 @@
+diff -uNrp zabbix-2.0.3rc1.orig/include/cfg.h zabbix-2.0.3rc1/include/cfg.h
+--- zabbix-2.0.3rc1.orig/include/cfg.h	2012-09-11 15:11:54.000000000 +0900
++++ zabbix-2.0.3rc1/include/cfg.h	2012-10-01 10:50:42.182147964 +0900
+@@ -47,8 +47,9 @@ struct cfg_line
+ 	int	mandatory;
+ 	int	min;
+ 	int	max;
++	int	reload;
+ };
+ 
+-int	parse_cfg_file(const char *cfg_file, struct cfg_line *cfg, int optional, int strict);
++int	parse_cfg_file(const char *cfg_file, struct cfg_line *cfg, int optional, int strict, int reload);
+ 
+ #endif
+diff -uNrp zabbix-2.0.3rc1.orig/include/common.h zabbix-2.0.3rc1/include/common.h
+--- zabbix-2.0.3rc1.orig/include/common.h	2012-09-11 15:11:54.000000000 +0900
++++ zabbix-2.0.3rc1/include/common.h	2012-10-01 10:50:42.183106505 +0900
+@@ -939,6 +939,8 @@ int	is_ip6(const char *ip);
+ #endif
+ int	is_ip4(const char *ip);
+ 
++void	reload_action();
++void	zbx_on_reload();
+ void	zbx_on_exit(); /* calls exit() at the end! */
+ 
+ int	get_nodeid_by_id(zbx_uint64_t id);
+--- zabbix-2.0.5.orig/src/libs/zbxconf/cfg.c	2013-02-13 07:43:45.262421367 +0900
++++ zabbix-2.0.5/src/libs/zbxconf/cfg.c	2013-02-13 09:51:29.343420765 +0900
+@@ -28,12 +28,12 @@ int	CONFIG_LOG_FILE_SIZE	= 1;
+ int	CONFIG_ALLOW_ROOT	= 0;
+ int	CONFIG_TIMEOUT		= 3;
+ 
+-static int	__parse_cfg_file(const char *cfg_file, struct cfg_line *cfg, int level, int optional, int strict);
++static int	__parse_cfg_file(const char *cfg_file, struct cfg_line *cfg, int level, int optional, int strict, int reload);
+ 
+-static int	parse_cfg_object(const char *cfg_file, struct cfg_line *cfg, int level, int strict)
++static int	parse_cfg_object(const char *cfg_file, struct cfg_line *cfg, int level, int strict, int reload)
+ {
+ #ifdef _WINDOWS
+-	return __parse_cfg_file(cfg_file, cfg, level, ZBX_CFG_FILE_REQUIRED, strict);
++	return __parse_cfg_file(cfg_file, cfg, level, ZBX_CFG_FILE_REQUIRED, strict, reload);
+ #else
+ 	DIR		*dir;
+ 	struct stat	sb;
+@@ -48,7 +48,7 @@ static int	parse_cfg_object(const char *
+ 	}
+ 
+ 	if (!S_ISDIR(sb.st_mode))
+-		return __parse_cfg_file(cfg_file, cfg, level, ZBX_CFG_FILE_REQUIRED, strict);
++		return __parse_cfg_file(cfg_file, cfg, level, ZBX_CFG_FILE_REQUIRED, strict, reload);
+ 
+ 	if (NULL == (dir = opendir(cfg_file)))
+ 	{
+@@ -63,7 +63,7 @@ static int	parse_cfg_object(const char *
+ 		if (-1 == stat(incl_file, &sb) || !S_ISREG(sb.st_mode))
+ 			continue;
+ 
+-		if (FAIL == __parse_cfg_file(incl_file, cfg, level, ZBX_CFG_FILE_REQUIRED, strict))
++		if (FAIL == __parse_cfg_file(incl_file, cfg, level, ZBX_CFG_FILE_REQUIRED, strict, reload))
+ 		{
+ 			result = FAIL;
+ 			break;
+@@ -101,7 +101,7 @@ static int	parse_cfg_object(const char *
+  * Comments:                                                                  *
+  *                                                                            *
+  ******************************************************************************/
+-static int	__parse_cfg_file(const char *cfg_file, struct cfg_line *cfg, int level, int optional, int strict)
++static int	__parse_cfg_file(const char *cfg_file, struct cfg_line *cfg, int level, int optional, int strict, int reload)
+ {
+ #define ZBX_MAX_INCLUDE_LEVEL	10
+ 
+@@ -148,7 +148,7 @@ static int	__parse_cfg_file(const char *
+ 
+ 			if (0 == strcmp(parameter, "Include"))
+ 			{
+-				if (FAIL == (result = parse_cfg_object(value, cfg, level, strict)))
++				if (FAIL == (result = parse_cfg_object(value, cfg, level, strict, reload)))
+ 					break;
+ 
+ 				continue;
+@@ -166,38 +166,43 @@ static int	__parse_cfg_file(const char *
+ 			param_valid = 0;
+ 			for (i = 0; NULL != cfg[i].parameter; i++)
+ 			{
+-				if (0 != strcmp(cfg[i].parameter, parameter))
+-					continue;
++				if(!reload || cfg[i].reload )
++				{
++					if (0 != strcmp(cfg[i].parameter, parameter))
++						continue;
+ 
+-				param_valid = 1;
++					param_valid = 1;
+ 
+-				zabbix_log(LOG_LEVEL_DEBUG, "accepted configuration parameter: '%s' = '%s'",parameter, value);
++					zabbix_log(LOG_LEVEL_DEBUG, "accepted configuration parameter: '%s' = '%s'",parameter, value);
+ 
+-				switch (cfg[i].type)
+-				{
+-					case TYPE_INT:
+-						if (FAIL == str2uint64(value, "KMGT", &var))
+-							goto incorrect_config;
+-
+-						/* usability: 2G converts to 0x7fffffff (2GB - 1 byte) */
+-						if ((zbx_uint64_t)2 * ZBX_GIBIBYTE == var)
+-							var--;
+-
+-						if (cfg[i].min > var || (0 != cfg[i].max && var > cfg[i].max))
+-							goto incorrect_config;
+-
+-						*((int *)cfg[i].variable) = (int)var;
+-						break;
+-					case TYPE_STRING:
+-						*((char **)cfg[i].variable) =
+-								zbx_strdup(*((char **)cfg[i].variable), value);
+-						break;
+-					case TYPE_MULTISTRING:
+-						zbx_strarr_add(cfg[i].variable, value);
+-						break;
+-					default:
+-						assert(0);
++					switch (cfg[i].type)
++					{
++						case TYPE_INT:
++							if (FAIL == str2uint64(value, "KMGT", &var))
++								goto incorrect_config;
++
++							/* usability: 2G converts to 0x7fffffff (2GB - 1 byte) */
++							if ((zbx_uint64_t)2 * ZBX_GIBIBYTE == var)
++								var--;
++
++							if (cfg[i].min > var || (0 != cfg[i].max && var > cfg[i].max))
++								goto incorrect_config;
++
++							*((int *)cfg[i].variable) = (int)var;
++							break;
++						case TYPE_STRING:
++							*((char **)cfg[i].variable) =
++									zbx_strdup(*((char **)cfg[i].variable), value);
++							break;
++						case TYPE_MULTISTRING:
++							zbx_strarr_add(cfg[i].variable, value);
++							break;
++						default:
++							assert(0);
++					}
+ 				}
++				else
++					param_valid = 1;
+ 			}
+ 
+ 			if (0 == param_valid && ZBX_CFG_STRICT == strict)
+@@ -253,7 +258,7 @@ garbage:
+ 	exit(1);
+ }
+ 
+-int	parse_cfg_file(const char *cfg_file, struct cfg_line *cfg, int optional, int strict)
++int	parse_cfg_file(const char *cfg_file, struct cfg_line *cfg, int optional, int strict, int reload)
+ {
+-	return __parse_cfg_file(cfg_file, cfg, 0, optional, strict);
++	return __parse_cfg_file(cfg_file, cfg, 0, optional, strict, reload);
+ }
+diff -uNrp zabbix-2.0.3rc1.orig/src/libs/zbxdb/db.c zabbix-2.0.3rc1/src/libs/zbxdb/db.c
+--- zabbix-2.0.3rc1.orig/src/libs/zbxdb/db.c	2012-09-11 15:11:55.000000000 +0900
++++ zabbix-2.0.3rc1/src/libs/zbxdb/db.c	2012-10-01 10:50:42.186119478 +0900
+@@ -676,6 +676,7 @@ int	zbx_db_vexecute(const char *fmt, va_
+ 	char	*sql = NULL;
+ 	int	ret = ZBX_DB_OK;
+ 	double	sec = 0;
++	int	tmp_log_slow_queries = CONFIG_LOG_SLOW_QUERIES;
+ 
+ #if defined(HAVE_IBM_DB2)
+ 	SQLHANDLE	hstmt = 0;
+@@ -695,7 +696,7 @@ int	zbx_db_vexecute(const char *fmt, va_
+ 	char		*error = NULL;
+ #endif
+ 
+-	if (0 != CONFIG_LOG_SLOW_QUERIES)
++	if (tmp_log_slow_queries)
+ 		sec = zbx_time();
+ 
+ 	sql = zbx_dvsprintf(sql, fmt, args);
+@@ -898,10 +899,10 @@ lbl_exec:
+ 		php_sem_release(&sqlite_access);
+ #endif	/* HAVE_SQLITE3 */
+ 
+-	if (0 != CONFIG_LOG_SLOW_QUERIES)
++	if (tmp_log_slow_queries)
+ 	{
+ 		sec = zbx_time() - sec;
+-		if (sec > (double)CONFIG_LOG_SLOW_QUERIES / 1000.0)
++		if (sec > (double)tmp_log_slow_queries / 1000.0)
+ 			zabbix_log(LOG_LEVEL_WARNING, "slow query: " ZBX_FS_DBL " sec, \"%s\"", sec, sql);
+ 	}
+ 
+@@ -930,6 +931,7 @@ DB_RESULT	zbx_db_vselect(const char *fmt
+ 	char		*sql = NULL;
+ 	DB_RESULT	result = NULL;
+ 	double		sec = 0;
++	int		tmp_log_slow_queries = CONFIG_LOG_SLOW_QUERIES;
+ 
+ #if defined(HAVE_IBM_DB2)
+ 	int		i;
+@@ -944,7 +946,7 @@ DB_RESULT	zbx_db_vselect(const char *fmt
+ 	char		*error = NULL;
+ #endif
+ 
+-	if (0 != CONFIG_LOG_SLOW_QUERIES)
++	if (tmp_log_slow_queries)
+ 		sec = zbx_time();
+ 
+ 	sql = zbx_dvsprintf(sql, fmt, args);
+@@ -1201,10 +1203,10 @@ lbl_get_table:
+ 		php_sem_release(&sqlite_access);
+ #endif	/* HAVE_SQLITE3 */
+ 
+-	if (0 != CONFIG_LOG_SLOW_QUERIES)
++	if (tmp_log_slow_queries)
+ 	{
+ 		sec = zbx_time() - sec;
+-		if (sec > (double)CONFIG_LOG_SLOW_QUERIES / 1000.0)
++		if (sec > (double)tmp_log_slow_queries / 1000.0)
+ 			zabbix_log(LOG_LEVEL_WARNING, "slow query: " ZBX_FS_DBL " sec, \"%s\"", sec, sql);
+ 	}
+ 
+diff -uNrp zabbix-2.0.3rc1.orig/src/libs/zbxnix/daemon.c zabbix-2.0.3rc1/src/libs/zbxnix/daemon.c
+--- zabbix-2.0.3rc1.orig/src/libs/zbxnix/daemon.c	2012-09-11 15:11:55.000000000 +0900
++++ zabbix-2.0.3rc1/src/libs/zbxnix/daemon.c	2012-10-01 10:50:42.187119952 +0900
+@@ -53,6 +53,17 @@ static void	child_signal_handler(int sig
+ 	{
+ 		case SIGALRM:
+ 			break;
++		case SIGHUP:
++			zabbix_log(LOG_LEVEL_WARNING, "Reloading config file");
++			if (!PARENT_PROCESS)
++			{
++				reload_action();
++			}
++			else
++			{
++				zbx_on_reload();
++			}
++			break;
+ 		case SIGILL:
+ 		case SIGFPE:
+ 		case SIGSEGV:
+@@ -274,6 +285,7 @@ int	daemon_start(int allow_root)
+ 	sigaction(SIGBUS, &phan, NULL);
+ 	sigaction(SIGALRM, &phan, NULL);
+ 	sigaction(SIGUSR1, &phan, NULL);
++	sigaction(SIGHUP, &phan, NULL);
+ 
+ 	/* Set SIGCHLD now to avoid race conditions when a child process is created before */
+ 	/* sigaction() is called. To avoid problems when scripts exit in zbx_execute() and */
+diff -uNrp zabbix-2.0.3rc1.orig/src/libs/zbxnix/fatal.c zabbix-2.0.3rc1/src/libs/zbxnix/fatal.c
+--- zabbix-2.0.3rc1.orig/src/libs/zbxnix/fatal.c	2012-09-11 15:11:55.000000000 +0900
++++ zabbix-2.0.3rc1/src/libs/zbxnix/fatal.c	2012-10-01 10:50:42.188118698 +0900
+@@ -49,6 +49,7 @@ const char	*get_signal_name(int sig)
+ 	switch (sig)
+ 	{
+ 		case SIGALRM:	return "SIGALRM";
++		case SIGHUP:	return "SIGHUP";
+ 		case SIGILL:	return "SIGILL";
+ 		case SIGFPE:	return "SIGFPE";
+ 		case SIGSEGV:	return "SIGSEGV";
+diff -uNrp zabbix-2.0.3rc1.orig/src/zabbix_agent/zabbix_agent.c zabbix-2.0.3rc1/src/zabbix_agent/zabbix_agent.c
+--- zabbix-2.0.3rc1.orig/src/zabbix_agent/zabbix_agent.c	2012-09-11 15:11:56.000000000 +0900
++++ zabbix-2.0.3rc1/src/zabbix_agent/zabbix_agent.c	2012-10-01 10:50:42.188118698 +0900
+@@ -75,7 +75,7 @@ static char	DEFAULT_CONFIG_FILE[] = SYSC
+  * Comments:                                                                  *
+  *                                                                            *
+  ******************************************************************************/
+-static void	zbx_load_config(int optional)
++static void	zbx_load_config(int optional, int reload)
+ {
+ 	struct cfg_line	cfg[] =
+ 	{
+@@ -98,7 +98,7 @@ static void	zbx_load_config(int optional
+ 	zbx_strarr_init(&CONFIG_ALIASES);
+ 	zbx_strarr_init(&CONFIG_USER_PARAMETERS);
+ 
+-	parse_cfg_file(CONFIG_FILE, cfg, optional, ZBX_CFG_STRICT);
++	parse_cfg_file(CONFIG_FILE, cfg, optional, ZBX_CFG_STRICT, reload);
+ }
+ 
+ /******************************************************************************
+@@ -179,9 +179,9 @@ int	main(int argc, char **argv)
+ 
+ 	/* load configuration */
+ 	if (ZBX_TASK_PRINT_SUPPORTED == task || ZBX_TASK_TEST_METRIC == task)
+-		zbx_load_config(ZBX_CFG_FILE_OPTIONAL);
++		zbx_load_config(ZBX_CFG_FILE_OPTIONAL, 0);
+ 	else
+-		zbx_load_config(ZBX_CFG_FILE_REQUIRED);
++		zbx_load_config(ZBX_CFG_FILE_REQUIRED, 0);
+ 
+ 	/* metrics should be initialized befor loading user parameters */
+ 	init_metrics();
+diff -uNrp zabbix-2.0.3rc1.orig/src/zabbix_agent/zabbix_agentd.c zabbix-2.0.3rc1/src/zabbix_agent/zabbix_agentd.c
+--- zabbix-2.0.3rc1.orig/src/zabbix_agent/zabbix_agentd.c	2012-09-11 15:11:56.000000000 +0900
++++ zabbix-2.0.3rc1/src/zabbix_agent/zabbix_agentd.c	2012-10-01 10:50:42.190119527 +0900
+@@ -212,7 +212,7 @@ static void	parse_commandline(int argc, 
+  * Author: Vladimir Levijev, Rudolfs Kreicbergs                               *
+  *                                                                            *
+  ******************************************************************************/
+-static void	set_defaults()
++static void	set_defaults(int reload)
+ {
+ 	AGENT_RESULT	result;
+ 	char		**value = NULL;
+@@ -415,79 +415,95 @@ fail:
+  * Parameters: requirement - produce error if config file missing or not      *
+  *                                                                            *
+  ******************************************************************************/
+-static void	zbx_load_config(int requirement)
++static void	zbx_load_config(int requirement, int reload)
+ {
+ 	char	*active_hosts = NULL;
+ 
+ 	struct cfg_line	cfg[] =
+ 	{
+ 		/* PARAMETER,			VAR,					TYPE,
+-			MANDATORY,	MIN,			MAX */
++			MANDATORY,	MIN,			MAX,		RELOAD */
+ 		{"Server",			&CONFIG_HOSTS_ALLOWED,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"ServerActive",		&active_hosts,				TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"Hostname",			&CONFIG_HOSTNAME,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"HostnameItem",		&CONFIG_HOSTNAME_ITEM,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"BufferSize",			&CONFIG_BUFFER_SIZE,			TYPE_INT,
+-			PARM_OPT,	2,			65535},
++			PARM_OPT,	2,			65535,		0},
+ 		{"BufferSend",			&CONFIG_BUFFER_SEND,			TYPE_INT,
+-			PARM_OPT,	1,			SEC_PER_HOUR},
++			PARM_OPT,	1,			SEC_PER_HOUR,	0},
+ #ifdef USE_PID_FILE
+ 		{"PidFile",			&CONFIG_PID_FILE,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ #endif
+ 		{"LogFile",			&CONFIG_LOG_FILE,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"LogFileSize",			&CONFIG_LOG_FILE_SIZE,			TYPE_INT,
+-			PARM_OPT,	0,			1024},
++			PARM_OPT,	0,			1024,		0},
+ 		{"Timeout",			&CONFIG_TIMEOUT,			TYPE_INT,
+-			PARM_OPT,	1,			30},
++			PARM_OPT,	1,			30,		0},
+ 		{"ListenPort",			&CONFIG_LISTEN_PORT,			TYPE_INT,
+-			PARM_OPT,	1024,			32767},
++			PARM_OPT,	1024,			32767,		0},
+ 		{"ListenIP",			&CONFIG_LISTEN_IP,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"SourceIP",			&CONFIG_SOURCE_IP,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DebugLevel",			&CONFIG_LOG_LEVEL,			TYPE_INT,
+-			PARM_OPT,	0,			4},
++			PARM_OPT,	0,			4,		1},
+ 		{"StartAgents",			&CONFIG_PASSIVE_FORKS,			TYPE_INT,
+-			PARM_OPT,	0,			100},
++			PARM_OPT,	0,			100,		0},
+ 		{"RefreshActiveChecks",		&CONFIG_REFRESH_ACTIVE_CHECKS,		TYPE_INT,
+-			PARM_OPT,	SEC_PER_MIN,		SEC_PER_HOUR},
++			PARM_OPT,	SEC_PER_MIN,		SEC_PER_HOUR,	0},
+ 		{"MaxLinesPerSecond",		&CONFIG_MAX_LINES_PER_SECOND,		TYPE_INT,
+-			PARM_OPT,	1,			1000},
++			PARM_OPT,	1,			1000,		0},
+ 		{"AllowRoot",			&CONFIG_ALLOW_ROOT,			TYPE_INT,
+-			PARM_OPT,	0,			1},
++			PARM_OPT,	0,			1,		0},
+ 		{"EnableRemoteCommands",	&CONFIG_ENABLE_REMOTE_COMMANDS,		TYPE_INT,
+-			PARM_OPT,	0,			1},
++			PARM_OPT,	0,			1,		0},
+ 		{"LogRemoteCommands",		&CONFIG_LOG_REMOTE_COMMANDS,		TYPE_INT,
+-			PARM_OPT,	0,			1},
++			PARM_OPT,	0,			1,		0},
+ 		{"UnsafeUserParameters",	&CONFIG_UNSAFE_USER_PARAMETERS,		TYPE_INT,
+-			PARM_OPT,	0,			1},
++			PARM_OPT,	0,			1,		0},
+ 		{"Alias",			&CONFIG_ALIASES,			TYPE_MULTISTRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"UserParameter",		&CONFIG_USER_PARAMETERS,		TYPE_MULTISTRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ #ifdef _WINDOWS
+ 		{"PerfCounter",			&CONFIG_PERF_COUNTERS,			TYPE_MULTISTRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ #endif
+ 		{NULL}
+ 	};
+ 
+ 	/* initialize multistrings */
++	if(!reload)
++	{
+ 	zbx_strarr_init(&CONFIG_ALIASES);
+ 	zbx_strarr_init(&CONFIG_USER_PARAMETERS);
+ #ifdef _WINDOWS
+ 	zbx_strarr_init(&CONFIG_PERF_COUNTERS);
+ #endif
++	}
+ 
+-	parse_cfg_file(CONFIG_FILE, cfg, requirement, ZBX_CFG_STRICT);
++	/* setting default value for reloading config */
++	if(reload)
++	{
++		CONFIG_LOG_LEVEL = LOG_LEVEL_WARNING;
++	}
+ 
+-	set_defaults();
++	parse_cfg_file(CONFIG_FILE, cfg, requirement, ZBX_CFG_STRICT, reload);
++
++	if(reload)
++	{
++		zabbix_set_log_level(CONFIG_LOG_LEVEL);
++	}
++	else
++	{
++	set_defaults(reload);
++	}
+ 
+ 	if (ZBX_CFG_FILE_REQUIRED == requirement && NULL == CONFIG_HOSTS_ALLOWED && 0 != CONFIG_PASSIVE_FORKS)
+ 	{
+@@ -660,6 +676,31 @@ int	MAIN_ZABBIX_ENTRY()
+ 	return SUCCEED;
+ }
+ 
++void	reload_action()
++{
++	zbx_load_config(ZBX_CFG_FILE_REQUIRED, 1);
++}
++
++void	zbx_on_reload()
++{
++	zbx_load_config(ZBX_CFG_FILE_REQUIRED, 1);
++#ifdef _WINDOWS
++#else /* not _WINDOWS */
++	if (threads != NULL)
++	{
++		int	i;
++
++		for (i = 0; i < threads_num; i++)
++		{
++			if (threads[i])
++			{
++				kill(threads[i],SIGHUP);
++			}
++		}
++	}
++#endif /* _WINDOWS */
++}
++
+ void	zbx_on_exit()
+ {
+ 	zabbix_log(LOG_LEVEL_DEBUG, "zbx_on_exit() called");
+@@ -750,7 +791,7 @@ int	main(int argc, char **argv)
+ 		case ZBX_TASK_UNINSTALL_SERVICE:
+ 		case ZBX_TASK_START_SERVICE:
+ 		case ZBX_TASK_STOP_SERVICE:
+-			zbx_load_config(ZBX_CFG_FILE_REQUIRED);
++			zbx_load_config(ZBX_CFG_FILE_REQUIRED, 0);
+ 			zbx_free_config();
+ 
+ 			if (t.flags & ZBX_TASK_FLAG_MULTIPLE_AGENTS)
+@@ -768,7 +809,7 @@ int	main(int argc, char **argv)
+ #endif
+ 		case ZBX_TASK_TEST_METRIC:
+ 		case ZBX_TASK_PRINT_SUPPORTED:
+-			zbx_load_config(ZBX_CFG_FILE_OPTIONAL);
++			zbx_load_config(ZBX_CFG_FILE_OPTIONAL, 0);
+ #ifdef _WINDOWS
+ 			init_perf_collector(0);
+ 			load_perf_counters(CONFIG_PERF_COUNTERS);
+@@ -788,7 +829,7 @@ int	main(int argc, char **argv)
+ 			exit(SUCCEED);
+ 			break;
+ 		default:
+-			zbx_load_config(ZBX_CFG_FILE_REQUIRED);
++			zbx_load_config(ZBX_CFG_FILE_REQUIRED, 0);
+ 			break;
+ 	}
+ 
+--- zabbix-2.0.5.orig/src/zabbix_proxy/proxy.c	2013-02-13 07:43:45.235445380 +0900
++++ zabbix-2.0.5/src/zabbix_proxy/proxy.c	2013-02-13 12:10:34.932442926 +0900
+@@ -310,124 +310,138 @@ static void	zbx_validate_config()
+  * Comments: will terminate process if parsing fails                          *
+  *                                                                            *
+  ******************************************************************************/
+-static void	zbx_load_config()
++static void	zbx_load_config(int reload)
+ {
+ 	static struct cfg_line	cfg[] =
+ 	{
+ 		/* PARAMETER,			VAR,					TYPE,
+-			MANDATORY,	MIN,			MAX */
++			MANDATORY,	MIN,			MAX,			RELOAD */
+ 		{"ProxyMode",			&CONFIG_PROXYMODE,			TYPE_INT,
+-			PARM_OPT,	ZBX_PROXYMODE_ACTIVE,	ZBX_PROXYMODE_PASSIVE},
++			PARM_OPT,	ZBX_PROXYMODE_ACTIVE,	ZBX_PROXYMODE_PASSIVE,	0},
+ 		{"Server",			&CONFIG_SERVER,				TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,	0},
+ 		{"ServerPort",			&CONFIG_SERVER_PORT,			TYPE_INT,
+-			PARM_OPT,	1024,			32767},
++			PARM_OPT,	1024,			32767,		0},
+ 		{"Hostname",			&CONFIG_HOSTNAME,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"HostnameItem",		&CONFIG_HOSTNAME_ITEM,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"StartDBSyncers",		&CONFIG_HISTSYNCER_FORKS,		TYPE_INT,
+-			PARM_OPT,	1,			100},
++			PARM_OPT,	1,			100,		0},
+ 		{"StartDiscoverers",		&CONFIG_DISCOVERER_FORKS,		TYPE_INT,
+-			PARM_OPT,	0,			250},
++			PARM_OPT,	0,			250,		0},
+ 		{"StartHTTPPollers",		&CONFIG_HTTPPOLLER_FORKS,		TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"StartPingers",		&CONFIG_PINGER_FORKS,			TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"StartPollers",		&CONFIG_POLLER_FORKS,			TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"StartPollersUnreachable",	&CONFIG_UNREACHABLE_POLLER_FORKS,	TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"StartIPMIPollers",		&CONFIG_IPMIPOLLER_FORKS,		TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"StartTrappers",		&CONFIG_TRAPPER_FORKS,			TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"StartJavaPollers",		&CONFIG_JAVAPOLLER_FORKS,		TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"JavaGateway",			&CONFIG_JAVA_GATEWAY,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"JavaGatewayPort",		&CONFIG_JAVA_GATEWAY_PORT,		TYPE_INT,
+-			PARM_OPT,	1024,			32767},
++			PARM_OPT,	1024,			32767,		0},
+ 		{"SNMPTrapperFile",		&CONFIG_SNMPTRAP_FILE,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"StartSNMPTrapper",		&CONFIG_SNMPTRAPPER_FORKS,		TYPE_INT,
+-			PARM_OPT,	0,			1},
++			PARM_OPT,	0,			1,		0},
+ 		{"CacheSize",			&CONFIG_CONF_CACHE_SIZE,		TYPE_INT,
+-			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff},	/* just below 2GB */
++			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff,	0},	/* just below 2GB */
+ 		{"HistoryCacheSize",		&CONFIG_HISTORY_CACHE_SIZE,		TYPE_INT,
+-			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff},	/* just below 2GB */
++			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff,	0},	/* just below 2GB */
+ 		{"HistoryTextCacheSize",	&CONFIG_TEXT_CACHE_SIZE,		TYPE_INT,
+-			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff},	/* just below 2GB */
++			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff,	0},	/* just below 2GB */
+ 		{"HousekeepingFrequency",	&CONFIG_HOUSEKEEPING_FREQUENCY,		TYPE_INT,
+-			PARM_OPT,	1,			24},
++			PARM_OPT,	1,			24,		0},
+ 		{"ProxyLocalBuffer",		&CONFIG_PROXY_LOCAL_BUFFER,		TYPE_INT,
+-			PARM_OPT,	0,			720},
++			PARM_OPT,	0,			720,		0},
+ 		{"ProxyOfflineBuffer",		&CONFIG_PROXY_OFFLINE_BUFFER,		TYPE_INT,
+-			PARM_OPT,	1,			720},
++			PARM_OPT,	1,			720,		0},
+ 		{"HeartbeatFrequency",		&CONFIG_HEARTBEAT_FREQUENCY,		TYPE_INT,
+-			PARM_OPT,	0,			SEC_PER_HOUR},
++			PARM_OPT,	0,			SEC_PER_HOUR,	0},
+ 		{"ConfigFrequency",		&CONFIG_PROXYCONFIG_FREQUENCY,		TYPE_INT,
+-			PARM_OPT,	1,			SEC_PER_WEEK},
++			PARM_OPT,	1,			SEC_PER_WEEK,	0},
+ 		{"DataSenderFrequency",		&CONFIG_PROXYDATA_FREQUENCY,		TYPE_INT,
+-			PARM_OPT,	1,			SEC_PER_HOUR},
++			PARM_OPT,	1,			SEC_PER_HOUR,	0},
+ 		{"TmpDir",			&CONFIG_TMPDIR,				TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"FpingLocation",		&CONFIG_FPING_LOCATION,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ #ifdef HAVE_IPV6
+ 		{"Fping6Location",		&CONFIG_FPING6_LOCATION,		TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ #endif
+ 		{"Timeout",			&CONFIG_TIMEOUT,			TYPE_INT,
+-			PARM_OPT,	1,			30},
++			PARM_OPT,	1,			30,		0},
+ 		{"TrapperTimeout",		&CONFIG_TRAPPER_TIMEOUT,		TYPE_INT,
+-			PARM_OPT,	1,			300},
++			PARM_OPT,	1,			300,		0},
+ 		{"UnreachablePeriod",		&CONFIG_UNREACHABLE_PERIOD,		TYPE_INT,
+-			PARM_OPT,	1,			SEC_PER_HOUR},
++			PARM_OPT,	1,			SEC_PER_HOUR,	0},
+ 		{"UnreachableDelay",		&CONFIG_UNREACHABLE_DELAY,		TYPE_INT,
+-			PARM_OPT,	1,			SEC_PER_HOUR},
++			PARM_OPT,	1,			SEC_PER_HOUR,	0},
+ 		{"UnavailableDelay",		&CONFIG_UNAVAILABLE_DELAY,		TYPE_INT,
+-			PARM_OPT,	1,			SEC_PER_HOUR},
++			PARM_OPT,	1,			SEC_PER_HOUR,	0},
+ 		{"ListenIP",			&CONFIG_LISTEN_IP,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"ListenPort",			&CONFIG_LISTEN_PORT,			TYPE_INT,
+-			PARM_OPT,	1024,			32767},
++			PARM_OPT,	1024,			32767,		0},
+ 		{"SourceIP",			&CONFIG_SOURCE_IP,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DebugLevel",			&CONFIG_LOG_LEVEL,			TYPE_INT,
+-			PARM_OPT,	0,			4},
++			PARM_OPT,	0,			4,		1},
+ 		{"PidFile",			&CONFIG_PID_FILE,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"LogFile",			&CONFIG_LOG_FILE,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"LogFileSize",			&CONFIG_LOG_FILE_SIZE,			TYPE_INT,
+-			PARM_OPT,	0,			1024},
++			PARM_OPT,	0,			1024,		0},
+ 		{"ExternalScripts",		&CONFIG_EXTERNALSCRIPTS,		TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DBHost",			&CONFIG_DBHOST,				TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DBName",			&CONFIG_DBNAME,				TYPE_STRING,
+-			PARM_MAND,	0,			0},
++			PARM_MAND,	0,			0,		0},
+ 		{"DBSchema",			&CONFIG_DBSCHEMA,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DBUser",			&CONFIG_DBUSER,				TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DBPassword",			&CONFIG_DBPASSWORD,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DBSocket",			&CONFIG_DBSOCKET,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DBPort",			&CONFIG_DBPORT,				TYPE_INT,
+-			PARM_OPT,	1024,			65535},
++			PARM_OPT,	1024,			65535,		0},
+ 		{"SSHKeyLocation",		&CONFIG_SSH_KEY_LOCATION,		TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"LogSlowQueries",		&CONFIG_LOG_SLOW_QUERIES,		TYPE_INT,
+-			PARM_OPT,	0,			3600000},
++			PARM_OPT,	0,			3600000,	1},
+ 		{NULL}
+ 	};
+ 
+-	parse_cfg_file(CONFIG_FILE, cfg, ZBX_CFG_FILE_REQUIRED, ZBX_CFG_STRICT);
++	/* setting default value for reloading config */
++	if(reload)
++	{
++		CONFIG_LOG_LEVEL = LOG_LEVEL_WARNING;
++		CONFIG_LOG_SLOW_QUERIES = 0;
++	}
++
++	parse_cfg_file(CONFIG_FILE, cfg, ZBX_CFG_FILE_REQUIRED, ZBX_CFG_STRICT, reload);
+ 
++	if(reload)
++	{
++		zabbix_set_log_level(CONFIG_LOG_LEVEL);
++	}
++	else
++	{
+ 	zbx_set_defaults();
++	}
+ 
+ 	zbx_validate_config();
+ }
+@@ -504,7 +518,7 @@ int	main(int argc, char **argv)
+ 	/* required for simple checks */
+ 	init_metrics();
+ 
+-	zbx_load_config();
++	zbx_load_config(0);
+ 
+ 	if (ZBX_TASK_CONFIG_CACHE_RELOAD == task)
+ 		exit(SUCCEED == zbx_sigusr_send(ZBX_TASK_CONFIG_CACHE_RELOAD) ? EXIT_SUCCESS : EXIT_FAILURE);
+@@ -734,6 +748,33 @@ int	MAIN_ZABBIX_ENTRY()
+ 	return SUCCEED;
+ }
+ 
++void	reload_action()
++{
++	zbx_load_config(1);
++}
++
++void	zbx_on_reload()
++{
++	zbx_load_config(1);
++	if (threads != NULL)
++	{
++		int	i;
++
++		for (i = 1; i <= CONFIG_CONFSYNCER_FORKS + CONFIG_DATASENDER_FORKS
++				+ CONFIG_POLLER_FORKS + CONFIG_UNREACHABLE_POLLER_FORKS
++				+ CONFIG_TRAPPER_FORKS + CONFIG_PINGER_FORKS
++				+ CONFIG_HOUSEKEEPER_FORKS + CONFIG_HTTPPOLLER_FORKS
++				+ CONFIG_DISCOVERER_FORKS + CONFIG_HISTSYNCER_FORKS
++				+ CONFIG_IPMIPOLLER_FORKS; i++)
++		{
++			if (threads[i])
++			{
++				kill(threads[i], SIGHUP);
++			}
++		}
++	}
++}
++
+ void	zbx_on_exit()
+ {
+ 	zabbix_log(LOG_LEVEL_DEBUG, "zbx_on_exit() called");
+--- zabbix-2.0.5.orig/src/zabbix_sender/zabbix_sender.c	2013-02-13 07:43:45.226432655 +0900
++++ zabbix-2.0.5/src/zabbix_sender/zabbix_sender.c	2013-02-13 10:32:27.935761327 +0900
+@@ -203,20 +203,20 @@ static void    zbx_load_config(const cha
+ 	struct cfg_line	cfg[] =
+ 	{
+ 		/* PARAMETER,			VAR,					TYPE,
+-			MANDATORY,	MIN,			MAX */
++			MANDATORY,	MIN,			MAX,	RELOAD */
+ 		{"SourceIP",			&cfg_source_ip,				TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,	0},
+ 		{"ServerActive",		&cfg_active_hosts,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,	0},
+ 		{"Hostname",			&cfg_hostname,				TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,	0},
+ 		{NULL}
+ 	};
+ 
+ 	if (NULL != config_file)
+ 	{
+ 		/* do not complain about unknown parameters */
+-		parse_cfg_file(config_file, cfg, ZBX_CFG_FILE_REQUIRED, ZBX_CFG_NOT_STRICT);
++		parse_cfg_file(config_file, cfg, ZBX_CFG_FILE_REQUIRED, ZBX_CFG_NOT_STRICT, 0);
+ 
+ 		if (NULL != cfg_source_ip)
+ 		{
+--- zabbix-2.0.5.orig/src/zabbix_server/server.c	2013-02-13 07:43:45.247426500 +0900
++++ zabbix-2.0.5/src/zabbix_server/server.c	2013-02-13 10:45:03.523422832 +0900
+@@ -269,128 +269,142 @@ static void	zbx_validate_config()
+  * Comments: will terminate process if parsing fails                          *
+  *                                                                            *
+  ******************************************************************************/
+-static void	zbx_load_config()
++static void	zbx_load_config(int reload)
+ {
+ 	static struct cfg_line	cfg[] =
+ 	{
+ 		/* PARAMETER,			VAR,					TYPE,
+-			MANDATORY,	MIN,			MAX */
++			MANDATORY,	MIN,			MAX,		RELOAD */
+ 		{"StartDBSyncers",		&CONFIG_HISTSYNCER_FORKS,		TYPE_INT,
+-			PARM_OPT,	1,			100},
++			PARM_OPT,	1,			100,		0},
+ 		{"StartDiscoverers",		&CONFIG_DISCOVERER_FORKS,		TYPE_INT,
+-			PARM_OPT,	0,			250},
++			PARM_OPT,	0,			250,		0},
+ 		{"StartHTTPPollers",		&CONFIG_HTTPPOLLER_FORKS,		TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"StartPingers",		&CONFIG_PINGER_FORKS,			TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"StartPollers",		&CONFIG_POLLER_FORKS,			TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"StartPollersUnreachable",	&CONFIG_UNREACHABLE_POLLER_FORKS,	TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"StartIPMIPollers",		&CONFIG_IPMIPOLLER_FORKS,		TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"StartTrappers",		&CONFIG_TRAPPER_FORKS,			TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"StartJavaPollers",		&CONFIG_JAVAPOLLER_FORKS,		TYPE_INT,
+-			PARM_OPT,	0,			1000},
++			PARM_OPT,	0,			1000,		0},
+ 		{"JavaGateway",			&CONFIG_JAVA_GATEWAY,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"JavaGatewayPort",		&CONFIG_JAVA_GATEWAY_PORT,		TYPE_INT,
+-			PARM_OPT,	1024,			32767},
++			PARM_OPT,	1024,			32767,		0},
+ 		{"SNMPTrapperFile",		&CONFIG_SNMPTRAP_FILE,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"StartSNMPTrapper",		&CONFIG_SNMPTRAPPER_FORKS,		TYPE_INT,
+-			PARM_OPT,	0,			1},
++			PARM_OPT,	0,			1,		0},
+ 		{"CacheSize",			&CONFIG_CONF_CACHE_SIZE,		TYPE_INT,
+-			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff},	/* just below 2GB */
++			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff,	0},	/* just below 2GB */
+ 		{"HistoryCacheSize",		&CONFIG_HISTORY_CACHE_SIZE,		TYPE_INT,
+-			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff},	/* just below 2GB */
++			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff,	0},	/* just below 2GB */
+ 		{"TrendCacheSize",		&CONFIG_TRENDS_CACHE_SIZE,		TYPE_INT,
+-			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff},	/* just below 2GB */
++			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff,	0},	/* just below 2GB */
+ 		{"HistoryTextCacheSize",	&CONFIG_TEXT_CACHE_SIZE,		TYPE_INT,
+-			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff},	/* just below 2GB */
++			PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff,	0},	/* just below 2GB */
+ 		{"CacheUpdateFrequency",	&CONFIG_CONFSYNCER_FREQUENCY,		TYPE_INT,
+-			PARM_OPT,	1,			SEC_PER_HOUR},
++			PARM_OPT,	1,			SEC_PER_HOUR,	0},
+ 		{"HousekeepingFrequency",	&CONFIG_HOUSEKEEPING_FREQUENCY,		TYPE_INT,
+-			PARM_OPT,	1,			24},
++			PARM_OPT,	1,			24,		0},
+ 		{"MaxHousekeeperDelete",	&CONFIG_MAX_HOUSEKEEPER_DELETE,		TYPE_INT,
+-			PARM_OPT,	0,			1000000},
++			PARM_OPT,	0,			1000000,	0},
+ 		{"SenderFrequency",		&CONFIG_SENDER_FREQUENCY,		TYPE_INT,
+-			PARM_OPT,	5,			SEC_PER_HOUR},
++			PARM_OPT,	5,			SEC_PER_HOUR,	0},
+ 		{"TmpDir",			&CONFIG_TMPDIR,				TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"FpingLocation",		&CONFIG_FPING_LOCATION,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ #ifdef HAVE_IPV6
+ 		{"Fping6Location",		&CONFIG_FPING6_LOCATION,		TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ #endif
+ 		{"Timeout",			&CONFIG_TIMEOUT,			TYPE_INT,
+-			PARM_OPT,	1,			30},
++			PARM_OPT,	1,			30,		0},
+ 		{"TrapperTimeout",		&CONFIG_TRAPPER_TIMEOUT,		TYPE_INT,
+-			PARM_OPT,	1,			300},
++			PARM_OPT,	1,			300,		0},
+ 		{"UnreachablePeriod",		&CONFIG_UNREACHABLE_PERIOD,		TYPE_INT,
+-			PARM_OPT,	1,			SEC_PER_HOUR},
++			PARM_OPT,	1,			SEC_PER_HOUR,	0},
+ 		{"UnreachableDelay",		&CONFIG_UNREACHABLE_DELAY,		TYPE_INT,
+-			PARM_OPT,	1,			SEC_PER_HOUR},
++			PARM_OPT,	1,			SEC_PER_HOUR,	0},
+ 		{"UnavailableDelay",		&CONFIG_UNAVAILABLE_DELAY,		TYPE_INT,
+-			PARM_OPT,	1,			SEC_PER_HOUR},
++			PARM_OPT,	1,			SEC_PER_HOUR,	0},
+ 		{"ListenIP",			&CONFIG_LISTEN_IP,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"ListenPort",			&CONFIG_LISTEN_PORT,			TYPE_INT,
+-			PARM_OPT,	1024,			32767},
++			PARM_OPT,	1024,			32767,		0},
+ 		{"SourceIP",			&CONFIG_SOURCE_IP,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DisableHousekeeping",		&CONFIG_DISABLE_HOUSEKEEPING,		TYPE_INT,
+-			PARM_OPT,	0,			1},
++			PARM_OPT,	0,			1,		0},
+ 		{"DebugLevel",			&CONFIG_LOG_LEVEL,			TYPE_INT,
+-			PARM_OPT,	0,			4},
++			PARM_OPT,	0,			4,		1},
+ 		{"PidFile",			&CONFIG_PID_FILE,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"LogFile",			&CONFIG_LOG_FILE,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"LogFileSize",			&CONFIG_LOG_FILE_SIZE,			TYPE_INT,
+-			PARM_OPT,	0,			1024},
++			PARM_OPT,	0,			1024,		0},
+ 		{"AlertScriptsPath",		&CONFIG_ALERT_SCRIPTS_PATH,		TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"ExternalScripts",		&CONFIG_EXTERNALSCRIPTS,		TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DBHost",			&CONFIG_DBHOST,				TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DBName",			&CONFIG_DBNAME,				TYPE_STRING,
+-			PARM_MAND,	0,			0},
++			PARM_MAND,	0,			0,		0},
+ 		{"DBSchema",			&CONFIG_DBSCHEMA,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DBUser",			&CONFIG_DBUSER,				TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DBPassword",			&CONFIG_DBPASSWORD,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DBSocket",			&CONFIG_DBSOCKET,			TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"DBPort",			&CONFIG_DBPORT,				TYPE_INT,
+-			PARM_OPT,	1024,			65535},
++			PARM_OPT,	1024,			65535,		0},
+ 		{"NodeID",			&CONFIG_NODEID,				TYPE_INT,
+-			PARM_OPT,	0,			999},
++			PARM_OPT,	0,			999,		0},
+ 		{"NodeNoEvents",		&CONFIG_NODE_NOEVENTS,			TYPE_INT,
+-			PARM_OPT,	0,			1},
++			PARM_OPT,	0,			1,		0},
+ 		{"NodeNoHistory",		&CONFIG_NODE_NOHISTORY,			TYPE_INT,
+-			PARM_OPT,	0,			1},
++			PARM_OPT,	0,			1,		0},
+ 		{"SSHKeyLocation",		&CONFIG_SSH_KEY_LOCATION,		TYPE_STRING,
+-			PARM_OPT,	0,			0},
++			PARM_OPT,	0,			0,		0},
+ 		{"LogSlowQueries",		&CONFIG_LOG_SLOW_QUERIES,		TYPE_INT,
+-			PARM_OPT,	0,			3600000},
++			PARM_OPT,	0,			3600000,	1},
+ 		{"StartProxyPollers",		&CONFIG_PROXYPOLLER_FORKS,		TYPE_INT,
+-			PARM_OPT,	0,			250},
++			PARM_OPT,	0,			250,		0},
+ 		{"ProxyConfigFrequency",	&CONFIG_PROXYCONFIG_FREQUENCY,		TYPE_INT,
+-			PARM_OPT,	1,			SEC_PER_WEEK},
++			PARM_OPT,	1,			SEC_PER_WEEK,	0},
+ 		{"ProxyDataFrequency",		&CONFIG_PROXYDATA_FREQUENCY,		TYPE_INT,
+-			PARM_OPT,	1,			SEC_PER_HOUR},
++			PARM_OPT,	1,			SEC_PER_HOUR,	0},
+ 		{NULL}
+ 	};
+ 
+-	parse_cfg_file(CONFIG_FILE, cfg, ZBX_CFG_FILE_REQUIRED, ZBX_CFG_STRICT);
++	/* setting default value for reloading config */
++	if(reload)
++	{
++		CONFIG_LOG_LEVEL = LOG_LEVEL_WARNING;
++		CONFIG_LOG_SLOW_QUERIES = 0;
++	}
++
++	parse_cfg_file(CONFIG_FILE, cfg, ZBX_CFG_FILE_REQUIRED, ZBX_CFG_STRICT, reload);
+ 
++	if(reload)
++	{
++		zabbix_set_log_level(CONFIG_LOG_LEVEL);
++	}
++	else
++	{
+ 	zbx_set_defaults();
++	}
+ 
+ 	zbx_validate_config();
+ }
+@@ -472,7 +486,7 @@ int	main(int argc, char **argv)
+ 	/* required for simple checks */
+ 	init_metrics();
+ 
+-	zbx_load_config();
++	zbx_load_config(0);
+ 
+ 	if (ZBX_TASK_CONFIG_CACHE_RELOAD == task)
+ 		exit(SUCCEED == zbx_sigusr_send(ZBX_TASK_CONFIG_CACHE_RELOAD) ? EXIT_SUCCESS : EXIT_FAILURE);
+@@ -773,6 +787,29 @@ int	MAIN_ZABBIX_ENTRY()
+ 	return SUCCEED;
+ }
+ 
++void	reload_action()
++{
++	zbx_load_config(1);
++}
++
++void	zbx_on_reload()
++{
++	zabbix_log(LOG_LEVEL_DEBUG, "zbx_on_reload() called");
++	zbx_load_config(1);
++	if (threads != NULL)
++	{
++		int	i;
++
++		for (i = 0; i < threads_num; i++)
++		{
++			if (threads[i])
++			{
++				kill(threads[i], SIGHUP);
++			}
++		}
++	}
++}
++
+ void	zbx_on_exit()
+ {
+ 	zabbix_log(LOG_LEVEL_DEBUG, "zbx_on_exit() called");

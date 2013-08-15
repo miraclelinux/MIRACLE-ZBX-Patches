@@ -1,0 +1,35 @@
+diff -uNrp zabbix-1.8.4.orig/frontends/php/include/maps.inc.php zabbix-1.8.4/frontends/php/include/maps.inc.php
+--- zabbix-1.8.4.orig/frontends/php/include/maps.inc.php	2011-01-04 22:57:51.000000000 +0900
++++ zabbix-1.8.4/frontends/php/include/maps.inc.php	2011-02-21 23:12:00.000000000 +0900
+@@ -313,6 +313,7 @@
+ 		$map_info = getSelementsInfo($sysmap);
+ //SDII($map_info);
+ 
++		$sysmap['selements'] = array_reverse($sysmap['selements']);
+ 		foreach($sysmap['selements'] as $snum => $db_element){
+ 			$links_menus = '';
+ 			$menus = '';
+@@ -351,7 +352,8 @@
+ 			}
+ 
+ 			$menus = trim($menus,',');
+-			$menus = 'show_popup_menu(event,['.$menus.'],180); cancelEvent(event);';
++			if(!empty($menus))
++				$menus = 'show_popup_menu(event,['.$menus.'],180); cancelEvent(event);';
+ 
+ 			$back = get_png_by_selement($db_element, $map_info[$db_element['selementid']]);
+ 			if(!$back) continue;
+@@ -364,10 +366,10 @@
+ 				'', '', 'rect'
+ 			);
+ 
+-			if(!empty($menus))
++			if(!empty($menus)){
+ 				$r_area->addAction('onclick', 'javascript: '.$menus);
+-
+-			$action_map->addItem($r_area);
++				$action_map->addItem($r_area);
++			}
+ 		}
+ 
+ 		$jsmenu = new CPUMenu(null,170);

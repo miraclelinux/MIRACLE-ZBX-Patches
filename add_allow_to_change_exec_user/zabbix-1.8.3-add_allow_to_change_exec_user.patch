@@ -1,0 +1,146 @@
+diff -uNrp trunk_r13332.orig/include/daemon.h trunk_r13332/include/daemon.h
+--- trunk_r13332.orig/include/daemon.h	2010-07-18 02:05:13.000000000 +0900
++++ trunk_r13332/include/daemon.h	2010-07-18 03:07:17.000000000 +0900
+@@ -32,7 +32,7 @@ extern char	*APP_PID_FILE;
+ 
+ void	child_signal_handler(int sig, siginfo_t *siginfo, void *context);
+ 
+-int	daemon_start(int allow_root);
++int	daemon_start(int allow_root, char *user);
+ void	daemon_stop(void);
+ 
+ void	init_main_process(void);
+@@ -40,6 +40,6 @@ void	init_main_process(void);
+ #define ZBX_IS_RUNNING()	1
+ #define ZBX_DO_EXIT()
+ 
+-#define START_MAIN_ZABBIX_ENTRY(a)	daemon_start(a)
++#define START_MAIN_ZABBIX_ENTRY(a, u)	daemon_start(a, u)
+ 
+ #endif /* ZABBIX_DAEMON_H */
+diff -uNrp trunk_r13332.orig/include/service.h trunk_r13332/include/service.h
+--- trunk_r13332.orig/include/service.h	2010-07-18 02:05:13.000000000 +0900
++++ trunk_r13332/include/service.h	2010-07-18 03:03:17.000000000 +0900
+@@ -45,6 +45,6 @@ int	application_status;	/* required for 
+ #define ZBX_IS_RUNNING()	(ZBX_APP_RUNNING == application_status)
+ #define ZBX_DO_EXIT()		application_status = ZBX_APP_STOPPED
+ 
+-#define START_MAIN_ZABBIX_ENTRY(a)	service_start()
++#define START_MAIN_ZABBIX_ENTRY(a ,u)	service_start()
+ 
+ #endif /* ZABBIX_SERVICE_H */
+diff -uNrp trunk_r13332.orig/src/libs/zbxnix/daemon.c trunk_r13332/src/libs/zbxnix/daemon.c
+--- trunk_r13332.orig/src/libs/zbxnix/daemon.c	2010-07-18 02:05:13.000000000 +0900
++++ trunk_r13332/src/libs/zbxnix/daemon.c	2010-07-18 03:04:18.000000000 +0900
+@@ -133,12 +133,11 @@ static void	parent_signal_handler(int si
+  * Comments: it doesn't allow running under 'root' if allow_root is zero      *
+  *                                                                            *
+  ******************************************************************************/
+-int	daemon_start(int allow_root)
++int	daemon_start(int allow_root, char *user)
+ {
+ 	pid_t			pid;
+ 	struct passwd		*pwd;
+ 	struct sigaction	phan;
+-	char			user[7] = "zabbix";
+ 
+ 	/* running as root ?*/
+ 	if((0 == allow_root) && (0 == getuid() || 0 == getgid()))
+diff -uNrp trunk_r13332.orig/src/zabbix_agent/zabbix_agentd.c trunk_r13332/src/zabbix_agent/zabbix_agentd.c
+--- trunk_r13332.orig/src/zabbix_agent/zabbix_agentd.c	2010-07-18 02:05:15.000000000 +0900
++++ trunk_r13332/src/zabbix_agent/zabbix_agentd.c	2010-07-18 03:02:29.000000000 +0900
+@@ -424,7 +424,7 @@ int	main(int argc, char **argv)
+ 			break;
+ 	}
+ 
+-	START_MAIN_ZABBIX_ENTRY(CONFIG_ALLOW_ROOT);
++	START_MAIN_ZABBIX_ENTRY(CONFIG_ALLOW_ROOT, CONFIG_EXEC_USER);
+ 
+ 	exit(SUCCEED);
+ }
+diff -uNrp trunk_r13332.orig/src/zabbix_agent/zbxconf.c trunk_r13332/src/zabbix_agent/zbxconf.c
+--- trunk_r13332.orig/src/zabbix_agent/zbxconf.c	2010-07-18 02:05:15.000000000 +0900
++++ trunk_r13332/src/zabbix_agent/zbxconf.c	2010-07-18 03:16:20.000000000 +0900
+@@ -62,6 +62,7 @@ int	CONFIG_BUFFER_SIZE		= 100;
+ int	CONFIG_BUFFER_SEND		= 5;
+ 
+ int	CONFIG_MAX_LINES_PER_SECOND	= 100;
++char	*CONFIG_EXEC_USER		= "zabbix";
+ 
+ void    load_config()
+ {
+@@ -96,6 +97,7 @@ void    load_config()
+ 		{"AllowRoot",		&CONFIG_ALLOW_ROOT,		0,TYPE_INT,	PARM_OPT,0,1},
+ 
+ 		{"LogUnresolvedSymbols",&CONFIG_LOG_UNRES_SYMB,		0,	TYPE_STRING,PARM_OPT,0,1},
++		{"ExecUser",		&CONFIG_EXEC_USER,		0,TYPE_STRING,	PARM_OPT,0,0},
+ 
+ 		{0}
+ 	};
+diff -uNrp trunk_r13332.orig/src/zabbix_agent/zbxconf.h trunk_r13332/src/zabbix_agent/zbxconf.h
+--- trunk_r13332.orig/src/zabbix_agent/zbxconf.h	2010-07-18 02:05:15.000000000 +0900
++++ trunk_r13332/src/zabbix_agent/zbxconf.h	2010-07-18 02:52:53.000000000 +0900
+@@ -34,6 +34,7 @@ extern char	*CONFIG_LISTEN_IP;
+ extern int	CONFIG_LOG_LEVEL;
+ extern char	CONFIG_LOG_UNRES_SYMB;
+ extern int	CONFIG_MAX_LINES_PER_SECOND;
++extern char	*CONFIG_EXEC_USER;
+ 
+ void    load_config();
+ void    load_user_parameters(int optional);
+diff -uNrp trunk_r13332.orig/src/zabbix_proxy/proxy.c trunk_r13332/src/zabbix_proxy/proxy.c
+--- trunk_r13332.orig/src/zabbix_proxy/proxy.c	2010-07-18 02:05:15.000000000 +0900
++++ trunk_r13332/src/zabbix_proxy/proxy.c	2010-07-18 03:42:54.000000000 +0900
+@@ -145,6 +145,7 @@ int	CONFIG_DBPORT			= 0;
+ int	CONFIG_ENABLE_REMOTE_COMMANDS	= 0;
+ int	CONFIG_LOG_REMOTE_COMMANDS	= 0;
+ int	CONFIG_UNSAFE_USER_PARAMETERS	= 0;
++char	*CONFIG_EXEC_USER		= "zabbix";
+ 
+ char	*CONFIG_SERVER			= NULL;
+ int	CONFIG_SERVER_PORT		= 10051;
+@@ -248,6 +249,7 @@ void	init_config(void)
+ 		{"DBPort",&CONFIG_DBPORT,0,TYPE_INT,PARM_OPT,1024,65535},
+ 		{"SSHKeyLocation",&CONFIG_SSH_KEY_LOCATION,0,TYPE_STRING,PARM_OPT,0,0},
+ 		{"LogSlowQueries",&CONFIG_LOG_SLOW_QUERIES,0,TYPE_INT,PARM_OPT,0,3600000},
++		{"ExecUser",&CONFIG_EXEC_USER,0,TYPE_STRING,PARM_OPT,0,0},
+ 		{0}
+ 	};
+ 
+@@ -393,7 +395,7 @@ int	main(int argc, char **argv)
+ 	init_ipmi_handler();
+ #endif
+ 
+-	return daemon_start(CONFIG_ALLOW_ROOT);
++	return daemon_start(CONFIG_ALLOW_ROOT, CONFIG_EXEC_USER);
+ }
+ 
+ int MAIN_ZABBIX_ENTRY(void)
+diff -uNrp trunk_r13332.orig/src/zabbix_server/server.c trunk_r13332/src/zabbix_server/server.c
+--- trunk_r13332.orig/src/zabbix_server/server.c	2010-07-18 02:05:15.000000000 +0900
++++ trunk_r13332/src/zabbix_server/server.c	2010-07-18 03:43:15.000000000 +0900
+@@ -145,6 +145,7 @@ int	CONFIG_DBPORT			= 0;
+ int	CONFIG_ENABLE_REMOTE_COMMANDS	= 0;
+ int	CONFIG_LOG_REMOTE_COMMANDS	= 0;
+ int	CONFIG_UNSAFE_USER_PARAMETERS	= 0;
++char	*CONFIG_EXEC_USER		= "zabbix";
+ 
+ int	CONFIG_NODEID			= 0;
+ int	CONFIG_MASTER_NODEID		= 0;
+@@ -244,6 +245,7 @@ void	init_config(void)
+ 		{"StartProxyPollers",&CONFIG_PROXYPOLLER_FORKS,0,TYPE_INT,PARM_OPT,0,255},
+ 		{"ProxyConfigFrequency",&CONFIG_PROXYCONFIG_FREQUENCY,0,TYPE_INT,PARM_OPT,1,3600*7*24},
+ 		{"ProxyDataFrequency",&CONFIG_PROXYDATA_FREQUENCY,0,TYPE_INT,PARM_OPT,1,3600},
++		{"ExecUser",&CONFIG_EXEC_USER,0,TYPE_STRING,PARM_OPT,0,0},
+ 		{0}
+ 	};
+ 
+@@ -367,7 +369,7 @@ int main(int argc, char **argv)
+ 			break;
+ 	}
+ 
+-	return daemon_start(CONFIG_ALLOW_ROOT);
++	return daemon_start(CONFIG_ALLOW_ROOT, CONFIG_EXEC_USER);
+ }
+ 
+ int MAIN_ZABBIX_ENTRY(void)

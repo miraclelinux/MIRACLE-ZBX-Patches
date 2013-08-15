@@ -1,0 +1,12 @@
+diff -uNrp zabbix-1.6.9.orig/frontends/php/include/maps.inc.php zabbix-1.6.9/frontends/php/include/maps.inc.php
+--- zabbix-1.6.9.orig/frontends/php/include/maps.inc.php	2010-03-25 23:53:21.000000000 +0900
++++ zabbix-1.6.9/frontends/php/include/maps.inc.php	2012-12-05 16:40:14.028648259 +0900
+@@ -756,7 +756,7 @@
+ 				$menus.= "['".S_STATUS_OF_TRIGGERS."',\"javascript: redirect('tr_status.php?groupid=0&hostid=".$db_element['elementid']."&noactions=true&onlytrue=true&compact=true');\", null,{'outer' : ['pum_o_item'],'inner' : ['pum_i_item']}],";
+ 
+ 				if(!empty($db_element["url"])){
+-					$menus.= "['".S_MAP.SPACE.S_URL."',\"javascript: location.replace('".$url."');\", null,{'outer' : ['pum_o_item'],'inner' : ['pum_i_item']}],";
++					$menus.= "['".S_MAP.SPACE.S_URL."',\"javascript: location.replace('".str_replace("'", "\\\\\\'", $url)."');\", null,{'outer' : ['pum_o_item'],'inner' : ['pum_i_item']}],";
+ 				}
+ 
+ 				$menus = trim($menus,',');
