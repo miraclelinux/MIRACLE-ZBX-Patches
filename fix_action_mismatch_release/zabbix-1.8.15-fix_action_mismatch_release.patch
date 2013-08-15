@@ -1,0 +1,489 @@
+diff -uNrp zabbix-1.8.16.orig/include/db.h zabbix-1.8.16/include/db.h
+--- zabbix-1.8.16.orig/include/db.h	2013-01-16 23:10:08.000000000 +0900
++++ zabbix-1.8.16/include/db.h	2013-03-14 19:48:14.581026258 +0900
+@@ -288,6 +288,8 @@ typedef struct
+ 	int		new_value;
+ 	unsigned char	type;
+ 	unsigned char	add_event;
++	unsigned char	history_value_type;
++	zbx_uint64_t 	history_id;
+ }
+ DB_TRIGGER_UPDATE;
+ 
+@@ -593,6 +595,7 @@ void	DBregister_host(zbx_uint64_t proxy_
+ void	DBproxy_register_host(const char *host);
+ void	DBexecute_overflowed_sql(char **sql, int *sql_allocated, int *sql_offset);
+ char	*DBget_unique_hostname_by_sample(char *host_name_sample);
++const char	*get_table_by_value_type(unsigned char value_type);
+ 
+ #define ZBX_DB_GET_HIST_MIN	0
+ #define ZBX_DB_GET_HIST_AVG	1
+diff -uNrp zabbix-1.8.16.orig/include/dbcache.h zabbix-1.8.16/include/dbcache.h
+--- zabbix-1.8.16.orig/include/dbcache.h	2013-01-16 23:10:08.000000000 +0900
++++ zabbix-1.8.16/include/dbcache.h	2013-03-14 19:48:14.581026258 +0900
+@@ -53,6 +53,7 @@ extern int	CONFIG_UNREACHABLE_DELAY;
+ extern int	CONFIG_HISTSYNCER_FORKS;
+ extern int	CONFIG_PROXYCONFIG_FREQUENCY;
+ extern int	CONFIG_PROXYDATA_FREQUENCY;
++extern int	CONFIG_FIX_ACTION_MISMATCH;
+ 
+ DC_HOST
+ {
+diff -uNrp zabbix-1.8.16.orig/src/libs/zbxdbcache/dbcache.c zabbix-1.8.16/src/libs/zbxdbcache/dbcache.c
+--- zabbix-1.8.16.orig/src/libs/zbxdbcache/dbcache.c	2013-01-16 23:10:09.000000000 +0900
++++ zabbix-1.8.16/src/libs/zbxdbcache/dbcache.c	2013-03-14 19:48:14.581026258 +0900
+@@ -98,6 +98,7 @@ ZBX_DC_HISTORY
+ 	unsigned char	keep_history;
+ 	unsigned char	keep_trends;
+ 	unsigned char	status;
++	zbx_uint64_t	id;
+ };
+ 
+ ZBX_DC_TREND
+@@ -902,7 +903,11 @@ static void	DCmass_update_triggers(ZBX_D
+ 			if (itemid == history[i].itemid)
+ 			{
+ 				if (tr_last->lastchange < history[i].clock)
++				{
+ 					tr_last->lastchange = history[i].clock;
++					tr_last->history_value_type = history[i].value_type;
++					tr_last->history_id = history[i].id;
++				}
+ 				break;
+ 			}
+ 		}
+@@ -961,7 +966,7 @@ static void	DCmass_update_triggers(ZBX_D
+ 				continue;
+ 
+ 			process_event(eventid++, EVENT_SOURCE_TRIGGERS, EVENT_OBJECT_TRIGGER, tr_last->triggerid,
+-					tr_last->lastchange, tr_last->new_value, 0, 0);
++					tr_last->lastchange, tr_last->new_value, 0, 0, tr_last->history_value_type, tr_last->history_id);
+ 		}
+ 	}
+ clean:
+@@ -1757,6 +1762,7 @@ static void	DCmass_add_history(ZBX_DC_HI
+ 					history[i].clock,
+ 					value_esc);
+ #endif
++			history[i].id = id;
+ 			zbx_free(value_esc);
+ 			id++;
+ 		}
+@@ -1824,6 +1830,7 @@ static void	DCmass_add_history(ZBX_DC_HI
+ 					value_esc,
+ 					history[i].logeventid);
+ #endif
++			history[i].id = id;
+ 			zbx_free(value_esc);
+ 			zbx_free(source_esc);
+ 			id++;
+diff -uNrp zabbix-1.8.16.orig/src/libs/zbxdbhigh/db.c zabbix-1.8.16/src/libs/zbxdbhigh/db.c
+--- zabbix-1.8.16.orig/src/libs/zbxdbhigh/db.c	2013-03-14 19:47:26.301024269 +0900
++++ zabbix-1.8.16/src/libs/zbxdbhigh/db.c	2013-03-14 19:48:14.585093936 +0900
+@@ -712,7 +712,7 @@ void	DBupdate_triggers_status_after_rest
+ 		for (i = 0; i < tr_num; i++)
+ 		{
+ 			process_event(eventid++, EVENT_SOURCE_TRIGGERS, EVENT_OBJECT_TRIGGER, tr[i].triggerid,
+-					tr[i].lastchange, TRIGGER_VALUE_UNKNOWN, 0, 0);
++					tr[i].lastchange, TRIGGER_VALUE_UNKNOWN, 0, 0, ITEM_VALUE_TYPE_FLOAT, 0);
+ 		}
+ 	}
+ 
+@@ -1853,7 +1853,7 @@ void	DBregister_host(zbx_uint64_t proxy_
+ 
+ 		/* Processing event */
+ 		process_event(0, EVENT_SOURCE_AUTO_REGISTRATION, EVENT_OBJECT_ZABBIX_ACTIVE,
+-				autoreg_hostid, now, TRIGGER_VALUE_TRUE, 0, 0);
++				autoreg_hostid, now, TRIGGER_VALUE_TRUE, 0, 0, ITEM_VALUE_TYPE_FLOAT, 0);
+ 	}
+ 
+ 	zbx_free(host_esc);
+@@ -1980,7 +1980,7 @@ char	*DBget_unique_hostname_by_sample(ch
+ 	return host_name_temp;
+ }
+ 
+-static const char	*get_table_by_value_type(unsigned char value_type)
++const char	*get_table_by_value_type(unsigned char value_type)
+ {
+ 	switch (value_type)
+ 	{
+diff -uNrp zabbix-1.8.16.orig/src/libs/zbxdbhigh/discovery.c zabbix-1.8.16/src/libs/zbxdbhigh/discovery.c
+--- zabbix-1.8.16.orig/src/libs/zbxdbhigh/discovery.c	2013-01-16 23:10:10.000000000 +0900
++++ zabbix-1.8.16/src/libs/zbxdbhigh/discovery.c	2013-03-14 19:48:14.585093936 +0900
+@@ -33,7 +33,7 @@
+  ******************************************************************************/
+ static void	discovery_add_event(int object, zbx_uint64_t objectid, int now, int value)
+ {
+-	process_event(0, EVENT_SOURCE_DISCOVERY, object, objectid, now, value, 0, 0);
++	process_event(0, EVENT_SOURCE_DISCOVERY, object, objectid, now, value, 0, 0, ITEM_VALUE_TYPE_FLOAT, 0);
+ }
+ 
+ static DB_RESULT	discovery_get_dhost_by_value(zbx_uint64_t dcheckid, const char *value)
+diff -uNrp zabbix-1.8.16.orig/src/libs/zbxserver/expression.c zabbix-1.8.16/src/libs/zbxserver/expression.c
+--- zabbix-1.8.16.orig/src/libs/zbxserver/expression.c	2013-01-16 23:10:09.000000000 +0900
++++ zabbix-1.8.16/src/libs/zbxserver/expression.c	2013-03-14 19:48:32.765027266 +0900
+@@ -1093,7 +1093,7 @@ static int	DBget_drule_value_by_event(DB
+  *                                                                            *
+  ******************************************************************************/
+ static int	DBget_history_log_value(DB_TRIGGER *trigger, char **replace_to,
+-		int N_functionid, const char *field_name)
++		int N_functionid, const char *field_name, zbx_uint64_t eventid)
+ {
+ 	const char	*__function_name = "DBget_history_log_value";
+ 	DB_RESULT	result;
+@@ -1117,19 +1117,45 @@ static int	DBget_history_log_value(DB_TR
+ 		zbx_uint64_t	itemid;
+ 		unsigned char	value_type;
+ 		char		**h_value;
++		/* If h_result is freed, h_value_for_DBfetch assigned by DBfetch(h_result) is also freed. */
++		DB_RESULT	h_result = NULL;
++		char		**h_value_for_DBfetch = NULL;
++		char		tmp[MAX_STRING_LEN];
+ 
+ 		if (ITEM_VALUE_TYPE_LOG == (value_type = (unsigned char)atoi(row[1])))
+ 		{
+ 			ZBX_STR2UINT64(itemid, row[0]);
+ 
++			/* For CONFIG_FIX_ACTION_MISMATCH On with valid eventid */
++			if(1 == CONFIG_FIX_ACTION_MISMATCH && eventid)
++			{
++				zabbix_log(LOG_LEVEL_DEBUG, "CONFIG_FIX_ACTION_MISMATCH is ON");
++				zabbix_log(LOG_LEVEL_DEBUG, "getting %s from %s and events_history_relation table",
++								field_name, get_table_by_value_type(value_type));
++				zbx_snprintf(tmp, sizeof(tmp), "select %s from %s h , events_history_relation where itemid="
++								ZBX_FS_UI64 " and eventid=" ZBX_FS_UI64 " and history_log_id=id",
++								field_name, get_table_by_value_type(value_type), itemid, eventid);
++				h_result = DBselectN(tmp, 1);
++				h_value_for_DBfetch = DBfetch(h_result);
++				if (NULL != h_value_for_DBfetch && NULL != h_value_for_DBfetch[0])
++				{
++					*replace_to = zbx_strdup(*replace_to, h_value_for_DBfetch[0]);
++					ret = SUCCEED;
++				}
++				DBfree_result(h_result);
++			}
++			/* For CONFIG_FIX_ACTION_MISMATCH Off, or fallback */
++			if (FAIL == ret)
++			{
++			zabbix_log(LOG_LEVEL_DEBUG, "CONFIG_FIX_ACTION_MISMATCH is Off, or fallback");
+ 			h_value = DBget_history(itemid, value_type, ZBX_DB_GET_HIST_VALUE, 0, 0, field_name, 1);
+-
+ 			if (NULL != h_value[0])
+ 			{
+ 				*replace_to = zbx_strdup(*replace_to, h_value[0]);
+ 				ret = SUCCEED;
+ 			}
+ 			DBfree_history(h_value);
++			}
+ 		}
+ 	}
+ 	DBfree_result(result);
+@@ -1243,11 +1269,12 @@ fail:
+  * Comments:                                                                  *
+  *                                                                            *
+  ******************************************************************************/
+-static int	DBget_item_value(DB_TRIGGER *trigger, char **value, int N_functionid, int clock)
++static int	DBget_item_value(DB_TRIGGER *trigger, char **value, int N_functionid, int clock, zbx_uint64_t eventid)
+ {
+ 	const char	*__function_name = "DBget_item_value";
+ 	DB_RESULT	result;
+ 	DB_ROW		row;
++	DB_RESULT	h_result = NULL;
+ 	zbx_uint64_t	functionid;
+ 	int		ret = FAIL;
+ 
+@@ -1267,16 +1294,50 @@ static int	DBget_item_value(DB_TRIGGER *
+ 	{
+ 		zbx_uint64_t	itemid, valuemapid;
+ 		unsigned char	value_type;
+-		char		**h_value;
++		char		**h_value = NULL;
+ 		char		tmp[MAX_STRING_LEN];
+ 
+ 		ZBX_STR2UINT64(itemid, row[0]);
+ 		value_type = (unsigned char)atoi(row[1]);
+ 		ZBX_STR2UINT64(valuemapid, row[2]);
+ 
++		if(1 == CONFIG_FIX_ACTION_MISMATCH && eventid)
++		{
++			zabbix_log(LOG_LEVEL_DEBUG, "CONFIG_FIX_ACTION_MISMATCH is ON");
++			if (ITEM_VALUE_TYPE_LOG == value_type)
++			{
++				zabbix_log(LOG_LEVEL_DEBUG, "getting value from events_history_relation table");
++				zbx_snprintf(tmp, sizeof(tmp), "select value from %s h , events_history_relation where itemid=%s and eventid=" ZBX_FS_UI64 " and history_log_id=id order by itemid,h.clock desc",
++						get_table_by_value_type(value_type), row[0], eventid);
++				h_result = DBselectN(tmp, 1);
++				h_value = DBfetch(h_result);
++			}
++			if (ITEM_VALUE_TYPE_TEXT == value_type)
++			{
++				zabbix_log(LOG_LEVEL_DEBUG, "getting value from events_history_relation table");
++				zbx_snprintf(tmp, sizeof(tmp), "select value from %s h , events_history_relation where itemid=%s and eventid=" ZBX_FS_UI64 " and history_text_id=id order by itemid,h.clock desc",
++						get_table_by_value_type(value_type), row[0], eventid);
++				h_result = DBselectN(tmp, 1);
++				h_value = DBfetch(h_result);
++			}
++
++			/* For not ITEM_VALUE_TYPE_LOG or ITEM_VALUE_TYPE_TEXT, or fallback */
++			if(NULL == h_value){
++				zabbix_log(LOG_LEVEL_DEBUG, "not ITEM_VALUE_TYPE_LOG or ITEM_VALUE_TYPE_TEXT, or fallback");
++				DBfree_result(h_result);
++				zbx_snprintf(tmp, sizeof(tmp), "select value from %s where itemid=%s and clock<=%d order by itemid,clock desc",
++						get_table_by_value_type(value_type), row[0], clock);
++				h_result = DBselectN(tmp, 1);
++				h_value = DBfetch(h_result);
++			}
++		}
++		else
++		{
++			zabbix_log(LOG_LEVEL_DEBUG, "CONFIG_FIX_ACTION_MISMATCH is OFF");
+ 		h_value = DBget_history(itemid, value_type, ZBX_DB_GET_HIST_VALUE, 0, clock, NULL, 1);
++		}
+ 
+-		if (NULL != h_value[0])
++		if (NULL != h_value && NULL != h_value[0])
+ 		{
+ 			switch (value_type)
+ 			{
+@@ -1304,7 +1365,10 @@ static int	DBget_item_value(DB_TRIGGER *
+ 			}
+ 			ret = SUCCEED;
+ 		}
+-		DBfree_history(h_value);
++		if(1 == CONFIG_FIX_ACTION_MISMATCH && eventid)
++			DBfree_result(h_result);
++		else
++			DBfree_history(h_value);
+ 	}
+ 	DBfree_result(result);
+ fail:
+@@ -1927,38 +1991,38 @@ int	substitute_simple_macros(DB_EVENT *e
+ 				else if (0 == strcmp(m, MVAR_ITEM_LASTVALUE))
+ 					ret = DBget_item_lastvalue(&event->trigger, &replace_to, N_functionid);
+ 				else if (0 == strcmp(m, MVAR_ITEM_VALUE))
+-					ret = DBget_item_value(&event->trigger, &replace_to, N_functionid, event->clock);
++					ret = DBget_item_value(&event->trigger, &replace_to, N_functionid, event->clock, event->eventid);
+ 				else if (0 == strcmp(m, MVAR_ITEM_LOG_DATE))
+ 				{
+ 					if (SUCCEED == (ret = DBget_history_log_value(&event->trigger, &replace_to,
+-									N_functionid, "timestamp")))
++									N_functionid, "timestamp", event->eventid)))
+ 						replace_to = zbx_strdup(replace_to, zbx_date2str((time_t)atoi(replace_to)));
+ 				}
+ 				else if (0 == strcmp(m, MVAR_ITEM_LOG_TIME))
+ 				{
+ 					if (SUCCEED == (ret = DBget_history_log_value(&event->trigger, &replace_to,
+-									N_functionid, "timestamp")))
++									N_functionid, "timestamp", event->eventid)))
+ 						replace_to = zbx_strdup(replace_to, zbx_time2str((time_t)atoi(replace_to)));
+ 				}
+ 				else if (0 == strcmp(m, MVAR_ITEM_LOG_AGE))
+ 				{
+ 					if (SUCCEED == (ret = DBget_history_log_value(&event->trigger, &replace_to,
+-									N_functionid, "timestamp")))
++									N_functionid, "timestamp", event->eventid)))
+ 						replace_to = zbx_strdup(replace_to, zbx_age2str(time(NULL) - atoi(replace_to)));
+ 				}
+ 				else if (0 == strcmp(m, MVAR_ITEM_LOG_SOURCE))
+-					ret = DBget_history_log_value(&event->trigger, &replace_to, N_functionid, "source");
++					ret = DBget_history_log_value(&event->trigger, &replace_to, N_functionid, "source", event->eventid);
+ 				else if (0 == strcmp(m, MVAR_ITEM_LOG_SEVERITY))
+ 				{
+ 					if (SUCCEED == (ret = DBget_history_log_value(&event->trigger, &replace_to,
+-									N_functionid, "severity")))
++									N_functionid, "severity", event->eventid)))
+ 						replace_to = zbx_strdup(replace_to,
+ 								zbx_item_logtype_string((zbx_item_logtype_t)atoi(replace_to)));
+ 				}
+ 				else if (0 == strcmp(m, MVAR_ITEM_LOG_NSEVERITY))
+-					ret = DBget_history_log_value(&event->trigger, &replace_to, N_functionid, "severity");
++					ret = DBget_history_log_value(&event->trigger, &replace_to, N_functionid, "severity", event->eventid);
+ 				else if (0 == strcmp(m, MVAR_ITEM_LOG_EVENTID))
+-					ret = DBget_history_log_value(&event->trigger, &replace_to, N_functionid, "logeventid");
++					ret = DBget_history_log_value(&event->trigger, &replace_to, N_functionid, "logeventid", event->eventid);
+ 				else if (0 == strcmp(m, MVAR_DATE))
+ 					replace_to = zbx_strdup(replace_to, zbx_date2str(time(NULL)));
+ 				else if (0 == strcmp(m, MVAR_TIME))
+@@ -2149,7 +2213,7 @@ int	substitute_simple_macros(DB_EVENT *e
+ 				else if (0 == strcmp(m, MVAR_ITEM_LASTVALUE))
+ 					ret = DBget_item_lastvalue(&event->trigger, &replace_to, N_functionid);
+ 				else if (0 == strcmp(m, MVAR_ITEM_VALUE))
+-					ret = DBget_item_value(&event->trigger, &replace_to, N_functionid, event->clock);
++					ret = DBget_item_value(&event->trigger, &replace_to, N_functionid, event->clock, event->eventid);
+ 				else if (0 == strncmp(m, "{$", 2))	/* user defined macros */
+ 					zbxmacros_get_value_by_triggerid(macros, event->objectid, m, &replace_to);
+ 			}
+diff -uNrp zabbix-1.8.16.orig/src/zabbix_proxy/proxy.c zabbix-1.8.16/src/zabbix_proxy/proxy.c
+--- zabbix-1.8.16.orig/src/zabbix_proxy/proxy.c	2013-03-14 19:47:26.297026009 +0900
++++ zabbix-1.8.16/src/zabbix_proxy/proxy.c	2013-03-14 19:48:14.585093936 +0900
+@@ -183,6 +183,9 @@ int	CONFIG_SERVER_STARTUP_TIME	= 0;
+ /* Monitoring interval in micro seconds */
+ int	CONFIG_MONITOR_INTERVAL		= 0; /* 0ms */
+ 
++/* Fix action mismatch by MIRACLE LINUX */
++int	CONFIG_FIX_ACTION_MISMATCH	= 0; /* off */
++
+ /* Mutex for node syncs; not used in proxy */
+ ZBX_MUTEX	node_sync_access;
+ 
+diff -uNrp zabbix-1.8.16.orig/src/zabbix_server/events.c zabbix-1.8.16/src/zabbix_server/events.c
+--- zabbix-1.8.16.orig/src/zabbix_server/events.c	2013-01-16 23:10:09.000000000 +0900
++++ zabbix-1.8.16/src/zabbix_server/events.c	2013-03-14 19:48:14.585093936 +0900
+@@ -271,7 +271,7 @@ out:
+  *                                                                            *
+  ******************************************************************************/
+ int	process_event(zbx_uint64_t eventid, int source, int object, zbx_uint64_t objectid, int clock,
+-		int value, int acknowledged, int force_actions)
++		int value, int acknowledged, int force_actions, unsigned char history_value_type, zbx_uint64_t history_id)
+ {
+ 	const char	*__function_name = "process_event";
+ 	DB_EVENT	event;
+@@ -300,6 +300,24 @@ int	process_event(zbx_uint64_t eventid,
+ 			" values (" ZBX_FS_UI64 ",%d,%d," ZBX_FS_UI64 ",%d,%d)",
+ 			event.eventid, event.source, event.object, event.objectid, event.clock, event.value);
+ 
++	if (1 == CONFIG_FIX_ACTION_MISMATCH)
++	{
++		if ((history_value_type == ITEM_VALUE_TYPE_LOG) && (history_id != 0))
++		{
++			DBexecute("insert into events_history_relation (eventid,history_log_id)"
++					" values (" ZBX_FS_UI64 "," ZBX_FS_UI64 ")",
++					event.eventid,
++					history_id);
++		}
++		if ((history_value_type == ITEM_VALUE_TYPE_TEXT) && (history_id != 0))
++		{
++			DBexecute("insert into events_history_relation (eventid,history_text_id)"
++					" values (" ZBX_FS_UI64 "," ZBX_FS_UI64 ")",
++					event.eventid,
++					history_id);
++		}
++	}
++
+ 	if (0 != event.ack_eventid)
+ 		copy_acknowledges(event.ack_eventid, event.eventid);
+ 
+diff -uNrp zabbix-1.8.16.orig/src/zabbix_server/events.h zabbix-1.8.16/src/zabbix_server/events.h
+--- zabbix-1.8.16.orig/src/zabbix_server/events.h	2013-01-16 23:10:09.000000000 +0900
++++ zabbix-1.8.16/src/zabbix_server/events.h	2013-03-14 19:48:14.585093936 +0900
+@@ -23,6 +23,6 @@
+ #include "common.h"
+ 
+ int	process_event(zbx_uint64_t eventid, int source, int object, zbx_uint64_t objectid, int clock,
+-		int value, int acknowledged, int force_actions);
++		int value, int acknowledged, int force_actions, unsigned char history_value_type, zbx_uint64_t history_id);
+ 
+ #endif
+diff -uNrp zabbix-1.8.16.orig/src/zabbix_server/housekeeper/housekeeper.c zabbix-1.8.16/src/zabbix_server/housekeeper/housekeeper.c
+--- zabbix-1.8.16.orig/src/zabbix_server/housekeeper/housekeeper.c	2013-01-16 23:10:09.000000000 +0900
++++ zabbix-1.8.16/src/zabbix_server/housekeeper/housekeeper.c	2013-03-14 19:48:14.585093936 +0900
+@@ -229,7 +229,23 @@ static int	housekeeping_events(int now)
+ 		event_history = atoi(row1[0]);
+ 
+ 		result2 = DBselect("select eventid from events where clock<%d", now - event_history * SEC_PER_DAY);
++		if(1 == CONFIG_FIX_ACTION_MISMATCH)
++                {
++			while((row2=DBfetch(result2)))
++			{
++				ZBX_STR2UINT64(eventid,row2[0]);
+ 
++				DBexecute("delete from acknowledges where eventid=" ZBX_FS_UI64, eventid);
++
++				DBexecute("delete from events where eventid=" ZBX_FS_UI64, eventid);
++
++				DBexecute("delete from events_history_relation where eventid=" ZBX_FS_UI64, eventid);
++			}
++			DBexecute("delete from events_history_relation where not exists " 
++					"(select eventid from events where events_history_relation.eventid=events.eventid)");
++		}
++		else
++		{
+ 		while (NULL != (row2 = DBfetch(result2)))
+ 		{
+ 			ZBX_STR2UINT64(eventid, row2[0]);
+@@ -237,6 +253,7 @@ static int	housekeeping_events(int now)
+ 			DBexecute("delete from acknowledges where eventid=" ZBX_FS_UI64, eventid);
+ 			deleted += DBexecute("delete from events where eventid=" ZBX_FS_UI64, eventid);
+ 		}
++		}
+ 		DBfree_result(result2);
+ 	}
+ 	DBfree_result(result);
+diff -uNrp zabbix-1.8.16.orig/src/zabbix_server/housekeeper/housekeeper.h zabbix-1.8.16/src/zabbix_server/housekeeper/housekeeper.h
+--- zabbix-1.8.16.orig/src/zabbix_server/housekeeper/housekeeper.h	2013-01-16 23:10:09.000000000 +0900
++++ zabbix-1.8.16/src/zabbix_server/housekeeper/housekeeper.h	2013-03-14 19:48:14.585093936 +0900
+@@ -22,6 +22,7 @@
+ 
+ extern int	CONFIG_HOUSEKEEPING_FREQUENCY;
+ extern int	CONFIG_MAX_HOUSEKEEPER_DELETE;
++extern int	CONFIG_FIX_ACTION_MISMATCH;
+ 
+ void	main_housekeeper_loop();
+ 
+diff -uNrp zabbix-1.8.16.orig/src/zabbix_server/poller/poller.c zabbix-1.8.16/src/zabbix_server/poller/poller.c
+--- zabbix-1.8.16.orig/src/zabbix_server/poller/poller.c	2013-03-14 19:47:26.269026705 +0900
++++ zabbix-1.8.16/src/zabbix_server/poller/poller.c	2013-03-14 19:48:14.585093936 +0900
+@@ -332,7 +332,7 @@ static void	update_triggers_status_to_un
+ 				continue;
+ 
+ 			process_event(eventid++, EVENT_SOURCE_TRIGGERS, EVENT_OBJECT_TRIGGER, tr_last->triggerid,
+-					tr_last->lastchange, tr_last->new_value, 0, 0);
++					tr_last->lastchange, tr_last->new_value, 0, 0, ITEM_VALUE_TYPE_FLOAT, 0);
+ 		}
+ 	}
+ 
+diff -uNrp zabbix-1.8.16.orig/src/zabbix_server/server.c zabbix-1.8.16/src/zabbix_server/server.c
+--- zabbix-1.8.16.orig/src/zabbix_server/server.c	2013-03-14 19:47:26.321027438 +0900
++++ zabbix-1.8.16/src/zabbix_server/server.c	2013-03-14 19:48:14.585093936 +0900
+@@ -186,6 +186,9 @@ int	CONFIG_PROXYDATA_FREQUENCY	= 1; /* 1
+ /* Monitoring interval in micro seconds */
+ int	CONFIG_MONITOR_INTERVAL		= 0; /* 0ms */
+ 
++/* Fix action mismatch by MIRACLE LINUX */
++int	CONFIG_FIX_ACTION_MISMATCH	= 0; /* off */
++
+ /* Mutex for node syncs */
+ ZBX_MUTEX	node_sync_access;
+ 
+@@ -312,6 +315,8 @@ static void	zbx_load_config(int reload)
+ 			PARM_OPT,	1,			SEC_PER_HOUR,	0},
+ 		{"MonitorInterval",		&CONFIG_MONITOR_INTERVAL,		TYPE_INT,
+ 			PARM_OPT,	0,			999},
++		{"FixActionMismatch",		&CONFIG_FIX_ACTION_MISMATCH,		TYPE_INT,
++			PARM_OPT,       0,			1,		0},
+ 		{NULL}
+ 	};
+ 
+diff -uNrp zabbix-1.8.16.orig/src/zabbix_server/timer/timer.c zabbix-1.8.16/src/zabbix_server/timer/timer.c
+--- zabbix-1.8.16.orig/src/zabbix_server/timer/timer.c	2013-01-16 23:10:09.000000000 +0900
++++ zabbix-1.8.16/src/zabbix_server/timer/timer.c	2013-03-14 19:48:14.585093936 +0900
+@@ -152,7 +152,7 @@ static void	process_time_functions()
+ 				continue;
+ 
+ 			process_event(eventid++, EVENT_SOURCE_TRIGGERS, EVENT_OBJECT_TRIGGER, tr_last->triggerid,
+-					tr_last->lastchange, tr_last->new_value, 0, 0);
++					tr_last->lastchange, tr_last->new_value, 0, 0, ITEM_VALUE_TYPE_FLOAT, 0);
+ 		}
+ 	}
+ 
+@@ -525,7 +525,7 @@ static void	generate_events(zbx_uint64_t
+ 		for (i = 0; i < tr_num; i++)
+ 		{
+ 			process_event(eventid++, EVENT_SOURCE_TRIGGERS, EVENT_OBJECT_TRIGGER, tr[i].triggerid,
+-					maintenance_to, tr[i].new_value, 0, 1);
++					maintenance_to, tr[i].new_value, 0, 1, ITEM_VALUE_TYPE_FLOAT, 0);
+ 		}
+ 	}
+ 
+diff -uNrp zabbix-1.8.16.orig/src/zabbix_server/trapper/nodehistory.c zabbix-1.8.16/src/zabbix_server/trapper/nodehistory.c
+--- zabbix-1.8.16.orig/src/zabbix_server/trapper/nodehistory.c	2013-01-16 23:10:09.000000000 +0900
++++ zabbix-1.8.16/src/zabbix_server/trapper/nodehistory.c	2013-03-14 19:48:14.589662849 +0900
+@@ -200,7 +200,7 @@ static int	process_record_event(int send
+ 			acknowledged = atoi(buffer);
+ 	}
+ 
+-	return process_event(eventid, source, object, objectid, clock, value, acknowledged, 0);
++	return process_event(eventid, source, object, objectid, clock, value, acknowledged, 0, ITEM_VALUE_TYPE_FLOAT, 0);
+ error:
+ 	zabbix_log(LOG_LEVEL_ERR, "NODE %d: received invalid record from node %d for node %d [%s]",
+ 			CONFIG_NODEID, sender_nodeid, nodeid, record);

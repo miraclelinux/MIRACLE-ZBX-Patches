@@ -1,0 +1,79 @@
+diff -uNrp zabbix-1.8.14.orig/frontends/php/events.php zabbix-1.8.14/frontends/php/events.php
+--- zabbix-1.8.14.orig/frontends/php/events.php	2012-07-04 22:05:54.553582654 +0900
++++ zabbix-1.8.14/frontends/php/events.php	2012-07-04 22:06:44.721083237 +0900
+@@ -598,7 +598,7 @@
+ 						}
+ 					}
+ 
+-					$description = expand_trigger_description_by_data(zbx_array_merge($trigger, array('clock'=>$event['clock'])), ZBX_FLAG_EVENT);
++					$description = expand_trigger_description_by_data(zbx_array_merge($trigger, array('clock'=>$event['clock'], 'eventid'=>$event['eventid'])), ZBX_FLAG_EVENT);
+ 					$tr_desc = new CSpan($description,'pointer');
+ 					$tr_desc->addAction('onclick',"create_mon_trigger_menu(event, ".
+ 						" [{'triggerid': '".$trigger['triggerid']."', 'lastchange': '".$event['clock']."'}],".
+diff -uNrp zabbix-1.8.14.orig/frontends/php/include/items.inc.php zabbix-1.8.14/frontends/php/include/items.inc.php
+--- zabbix-1.8.14.orig/frontends/php/include/items.inc.php	2012-06-28 06:01:09.000000000 +0900
++++ zabbix-1.8.14/frontends/php/include/items.inc.php	2012-07-04 22:06:44.721083237 +0900
+@@ -1440,7 +1440,7 @@
+  * Comments:
+  *
+  */
+-	function item_get_history($db_item, $last = 1, $clock = 0){
++	function item_get_history($db_item, $last = 1, $clock = 0, $eventid = 0){
+ 		$value = NULL;
+ 
+ 		switch($db_item["value_type"]){
+@@ -1462,6 +1462,16 @@
+ 				break;
+ 		}
+ 
++		global $ZBX_FIX_ITEM_VALUE;
++		if(isset($ZBX_FIX_ITEM_VALUE) && $ZBX_FIX_ITEM_VALUE === "1" && $eventid != 0 && ($db_item["value_type"] == ITEM_VALUE_TYPE_TEXT || $db_item["value_type"] == ITEM_VALUE_TYPE_LOG)){
++			$sql = 'SELECT value FROM history_log WHERE id = (SELECT history_log_id from events_history_relation where eventid='.$eventid.') '.
++				' UNION '.
++				' SELECT value FROM history_text WHERE id = (select history_text_id from events_history_relation where eventid='.$eventid.')';
++			$row = DBfetch(DBselect($sql, 1));
++			if($row)
++				$value = $row["value"];
++		}
++		if($value == NULL){
+ 		if($last == 0){
+ 			$sql = 'select value from '.$table.' where itemid='.$db_item['itemid'].' and clock<='.$clock.
+ 					' order by itemid,clock desc';
+@@ -1480,6 +1490,7 @@
+ 					$value = $row["value"];
+ 			}
+ 		}
++		}
+ 	return $value;
+ 	}
+ 
+diff -uNrp zabbix-1.8.14.orig/frontends/php/include/triggers.inc.php zabbix-1.8.14/frontends/php/include/triggers.inc.php
+--- zabbix-1.8.14.orig/frontends/php/include/triggers.inc.php	2012-06-28 06:01:09.000000000 +0900
++++ zabbix-1.8.14/frontends/php/include/triggers.inc.php	2012-07-04 22:06:44.725082734 +0900
+@@ -1459,7 +1459,7 @@ function expand_trigger_description_by_d
+ 
+ 					$itemData['lastvalue'] = ($flag == ZBX_FLAG_TRIGGER)
+ 							? trigger_get_func_value($row['expression'], ZBX_FLAG_TRIGGER, $i ? $i : 1, 1)
+-							: trigger_get_func_value($row['expression'], ZBX_FLAG_EVENT, $i ? $i : 1, $row['clock']);
++							: trigger_get_func_value($row['expression'], ZBX_FLAG_EVENT, $i ? $i : 1, $row['clock'], $row['eventid']);
+ 					$description = str_replace($macro, format_lastvalue($itemData), $description);
+ 				}
+ 			}
+@@ -2751,7 +2751,7 @@ function copy_template_triggers($hostid,
+ 	 * Comments:
+ 	 *
+ 	 */
+-	function trigger_get_func_value($expression, $flag, $function, $param){
++	function trigger_get_func_value($expression, $flag, $function, $param, $eventid = 0){
+ 		$result = NULL;
+ 
+ 		$functionid=trigger_get_N_functionid($expression,$function);
+@@ -2762,7 +2762,7 @@ function copy_template_triggers($hostid,
+ 			{
+ 				$result=($flag == ZBX_FLAG_TRIGGER)?
+ 					item_get_history($row, $param):
+-					item_get_history($row, 0, $param);
++					item_get_history($row, 0, $param, $eventid);
+ 			}
+ 		}
+ 		return $result;

@@ -1,0 +1,14 @@
+diff -uNrp zabbix-1.8.5.orig/src/libs/zbxdbhigh/db.c zabbix-1.8.5/src/libs/zbxdbhigh/db.c
+--- zabbix-1.8.5.orig/src/libs/zbxdbhigh/db.c	2011-09-01 11:38:58.000000000 +0900
++++ zabbix-1.8.5/src/libs/zbxdbhigh/db.c	2011-09-01 10:14:27.000000000 +0900
+@@ -837,7 +837,9 @@ int	DBget_items_unsupported_count()
+ 
+ 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __function_name);
+ 
+-	result = DBselect("select count(*) from items where status=%d", ITEM_STATUS_NOTSUPPORTED);
++	result = DBselect("select count(distinct i.itemid) as cnt from items i, hosts h where i.hostid=h.hostid and h.status=%d and i.status=%d", 
++		HOST_STATUS_MONITORED,
++		ITEM_STATUS_NOTSUPPORTED);
+ 
+ 	if (NULL != (row = DBfetch(result)))
+ 		count = atoi(row[0]);
