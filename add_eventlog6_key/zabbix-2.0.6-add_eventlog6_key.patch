@@ -1,0 +1,858 @@
+diff -uNrp zabbix-2.0.6.orig/database/ibm_db2/data.sql zabbix-2.0.6/database/ibm_db2/data.sql
+--- zabbix-2.0.6.orig/database/ibm_db2/data.sql	2013-04-22 21:32:21.000000000 +0900
++++ zabbix-2.0.6/database/ibm_db2/data.sql	2013-07-24 13:16:04.595173533 +0900
+@@ -1877,6 +1877,7 @@ INSERT INTO help_items (itemtype,key_,de
+ INSERT INTO help_items (itemtype,key_,description) values ('7','agent.ping','Check the agent usability. Always return 1. Can be used as a TCP ping.');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','agent.version','Version of zabbix_agent(d) running on monitored host. String value. Example of returned value: 1.1');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','eventlog[logtype,&lt;pattern&gt;,&lt;severity&gt;,&lt;source&gt;,&lt;eventid&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of Windows event logs. pattern, severity, eventid - regular expressions');
++INSERT INTO help_items (itemtype,key_,description) values ('7','eventlog6[logtype,&lt;pattern&gt;,&lt;severity&gt;,&lt;source&gt;,&lt;eventid&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of Windows event logs by Eventing 6 API available since Windows Vista or 2008. pattern, severity, eventid - regular expressions');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','kernel.maxfiles','Maximum number of opened files supported by OS.');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','kernel.maxproc','Maximum number of processes supported by OS.');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','logrt[file_format,&lt;pattern&gt;,&lt;encoding&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of log file with rotation. fileformat - [path][regexp], pattern - regular expression');
+diff -uNrp zabbix-2.0.6.orig/database/mysql/data.sql zabbix-2.0.6/database/mysql/data.sql
+--- zabbix-2.0.6.orig/database/mysql/data.sql	2013-04-22 21:32:21.000000000 +0900
++++ zabbix-2.0.6/database/mysql/data.sql	2013-07-24 13:16:04.599572649 +0900
+@@ -1829,6 +1829,7 @@ INSERT INTO `help_items` (`itemtype`,`ke
+ INSERT INTO `help_items` (`itemtype`,`key_`,`description`) values ('7','agent.ping','Check the agent usability. Always return 1. Can be used as a TCP ping.');
+ INSERT INTO `help_items` (`itemtype`,`key_`,`description`) values ('7','agent.version','Version of zabbix_agent(d) running on monitored host. String value. Example of returned value: 1.1');
+ INSERT INTO `help_items` (`itemtype`,`key_`,`description`) values ('7','eventlog[logtype,&lt;pattern&gt;,&lt;severity&gt;,&lt;source&gt;,&lt;eventid&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of Windows event logs. pattern, severity, eventid - regular expressions');
++INSERT INTO `help_items` (`itemtype`,`key_`,`description`) values ('7','eventlog6[logtype,&lt;pattern&gt;,&lt;severity&gt;,&lt;source&gt;,&lt;eventid&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of Windows event logs by Eventing 6 API available since Windows Vista or 2008. pattern, severity, eventid - regular expressions');
+ INSERT INTO `help_items` (`itemtype`,`key_`,`description`) values ('7','kernel.maxfiles','Maximum number of opened files supported by OS.');
+ INSERT INTO `help_items` (`itemtype`,`key_`,`description`) values ('7','kernel.maxproc','Maximum number of processes supported by OS.');
+ INSERT INTO `help_items` (`itemtype`,`key_`,`description`) values ('7','logrt[file_format,&lt;pattern&gt;,&lt;encoding&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of log file with rotation. fileformat - [path][regexp], pattern - regular expression');
+diff -uNrp zabbix-2.0.6.orig/database/oracle/data.sql zabbix-2.0.6/database/oracle/data.sql
+--- zabbix-2.0.6.orig/database/oracle/data.sql	2013-04-22 21:32:21.000000000 +0900
++++ zabbix-2.0.6/database/oracle/data.sql	2013-07-24 13:16:04.599572649 +0900
+@@ -5489,6 +5489,9 @@ INSERT INTO help_items (itemtype,key_,de
+ INSERT INTO help_items (itemtype,key_,description) values ('7','eventlog[logtype,&lt;pattern&gt;,&lt;severity&gt;,&lt;source&gt;,&lt;eventid&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of Windows event logs. pattern, severity, eventid - regular expressions')
+ /
+ 
++INSERT INTO help_items (itemtype,key_,description) values ('7','eventlog6[logtype,&lt;pattern&gt;,&lt;severity&gt;,&lt;source&gt;,&lt;eventid&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of Windows event logs by Eventing 6 API available since Windows Vista or 2008. pattern, severity, eventid - regular expressions')
++/
++
+ INSERT INTO help_items (itemtype,key_,description) values ('7','kernel.maxfiles','Maximum number of opened files supported by OS.')
+ /
+ 
+diff -uNrp zabbix-2.0.6.orig/database/postgresql/data.sql zabbix-2.0.6/database/postgresql/data.sql
+--- zabbix-2.0.6.orig/database/postgresql/data.sql	2013-04-22 21:32:21.000000000 +0900
++++ zabbix-2.0.6/database/postgresql/data.sql	2013-07-24 13:16:04.599572649 +0900
+@@ -1878,6 +1878,7 @@ INSERT INTO help_items (itemtype,key_,de
+ INSERT INTO help_items (itemtype,key_,description) values ('7','agent.ping','Check the agent usability. Always return 1. Can be used as a TCP ping.');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','agent.version','Version of zabbix_agent(d) running on monitored host. String value. Example of returned value: 1.1');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','eventlog[logtype,&lt;pattern&gt;,&lt;severity&gt;,&lt;source&gt;,&lt;eventid&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of Windows event logs. pattern, severity, eventid - regular expressions');
++INSERT INTO help_items (itemtype,key_,description) values ('7','eventlog6[logtype,&lt;pattern&gt;,&lt;severity&gt;,&lt;source&gt;,&lt;eventid&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of Windows event logs by Eventing 6 API available since Windows Vista or 2008. pattern, severity, eventid - regular expressions');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','kernel.maxfiles','Maximum number of opened files supported by OS.');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','kernel.maxproc','Maximum number of processes supported by OS.');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','logrt[file_format,&lt;pattern&gt;,&lt;encoding&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of log file with rotation. fileformat - [path][regexp], pattern - regular expression');
+diff -uNrp zabbix-2.0.6.orig/database/sqlite3/data.sql zabbix-2.0.6/database/sqlite3/data.sql
+--- zabbix-2.0.6.orig/database/sqlite3/data.sql	2013-04-22 21:32:21.000000000 +0900
++++ zabbix-2.0.6/database/sqlite3/data.sql	2013-07-24 13:16:04.603207930 +0900
+@@ -1878,6 +1878,7 @@ INSERT INTO help_items (itemtype,key_,de
+ INSERT INTO help_items (itemtype,key_,description) values ('7','agent.ping','Check the agent usability. Always return 1. Can be used as a TCP ping.');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','agent.version','Version of zabbix_agent(d) running on monitored host. String value. Example of returned value: 1.1');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','eventlog[logtype,&lt;pattern&gt;,&lt;severity&gt;,&lt;source&gt;,&lt;eventid&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of Windows event logs. pattern, severity, eventid - regular expressions');
++INSERT INTO help_items (itemtype,key_,description) values ('7','eventlog6[logtype,&lt;pattern&gt;,&lt;severity&gt;,&lt;source&gt;,&lt;eventid&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of Windows event logs by Eventing 6 API available since Windows Vista or 2008. pattern, severity, eventid - regular expressions');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','kernel.maxfiles','Maximum number of opened files supported by OS.');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','kernel.maxproc','Maximum number of processes supported by OS.');
+ INSERT INTO help_items (itemtype,key_,description) values ('7','logrt[file_format,&lt;pattern&gt;,&lt;encoding&gt;,&lt;maxlines&gt;,&lt;mode&gt;]','Monitoring of log file with rotation. fileformat - [path][regexp], pattern - regular expression');
+diff -uNrp zabbix-2.0.6.orig/frontends/php/api/classes/CItemGeneral.php zabbix-2.0.6/frontends/php/api/classes/CItemGeneral.php
+--- zabbix-2.0.6.orig/frontends/php/api/classes/CItemGeneral.php	2013-04-22 21:31:51.000000000 +0900
++++ zabbix-2.0.6/frontends/php/api/classes/CItemGeneral.php	2013-07-24 13:16:04.603207930 +0900
+@@ -291,7 +291,7 @@ abstract class CItemGeneral extends CZBX
+ 				self::exception(ZBX_API_ERROR_PARAMETERS, _('Type of information must be "Numeric (float)" for aggregate items.'));
+ 			}
+ 
+-			if ($fullItem['value_type'] != ITEM_VALUE_TYPE_LOG && str_in_array($itemKey->getKeyId(), array('log', 'logrt', 'eventlog'))) {
++			if ($fullItem['value_type'] != ITEM_VALUE_TYPE_LOG && str_in_array($itemKey->getKeyId(), array('log', 'logrt', 'eventlog', 'eventlog6'))) {
+ 				self::exception(ZBX_API_ERROR_PARAMETERS, _('Type of information must be "Log" for log key.'));
+ 			}
+ 
+diff -uNrp zabbix-2.0.6.orig/frontends/php/include/classes/screens/CScreenHistory.php zabbix-2.0.6/frontends/php/include/classes/screens/CScreenHistory.php
+--- zabbix-2.0.6.orig/frontends/php/include/classes/screens/CScreenHistory.php	2013-04-22 21:31:49.000000000 +0900
++++ zabbix-2.0.6/frontends/php/include/classes/screens/CScreenHistory.php	2013-07-24 13:16:04.603207930 +0900
+@@ -153,7 +153,7 @@ class CScreenHistory extends CScreenBase
+ 			if (isset($iv_string[$this->item['value_type']])) {
+ 				$isManyItems = (count($this->items) > 1);
+ 				$useLogItem = ($this->item['value_type'] == ITEM_VALUE_TYPE_LOG);
+-				$useEventLogItem = (strpos($this->item['key_'], 'eventlog[') === 0);
++				$useEventLogItem = ((strpos($this->item['key_'], 'eventlog[') === 0) || (strpos($this->item['key_'], 'eventlog6[') === 0));
+ 
+ 				if (empty($this->plaintext)) {
+ 					$historyTable = new CTableInfo(_('No history defined.'));
+diff -uNrp zabbix-2.0.6.orig/src/libs/zbxsysinfo/common/common.c zabbix-2.0.6/src/libs/zbxsysinfo/common/common.c
+--- zabbix-2.0.6.orig/src/libs/zbxsysinfo/common/common.c	2013-04-22 21:31:48.000000000 +0900
++++ zabbix-2.0.6/src/libs/zbxsysinfo/common/common.c	2013-07-24 13:16:04.603207930 +0900
+@@ -74,6 +74,7 @@ ZBX_METRIC	parameters_common[] =
+ 	{"log",			CF_USEUPARAM,	ONLY_ACTIVE, 		0,	"logfile"},
+ 	{"logrt",		CF_USEUPARAM,	ONLY_ACTIVE,		0,	"logfile"},
+ 	{"eventlog",		CF_USEUPARAM,	ONLY_ACTIVE, 		0,	"system"},
++	{"eventlog6",		CF_USEUPARAM,	ONLY_ACTIVE, 		0,	"system"},
+ 
+ 	{0}
+ };
+diff -uNrp zabbix-2.0.6.orig/src/zabbix_agent/active.c zabbix-2.0.6/src/zabbix_agent/active.c
+--- zabbix-2.0.6.orig/src/zabbix_agent/active.c	2013-04-22 21:31:48.000000000 +0900
++++ zabbix-2.0.6/src/zabbix_agent/active.c	2013-07-24 13:16:04.603207930 +0900
+@@ -766,9 +766,16 @@ static void	process_active_checks(char *
+ 	unsigned long	timestamp, logeventid;
+ 	unsigned short	severity;
+ 	char		key_severity[MAX_STRING_LEN], str_severity[32] /* for `regex_match_ex' */;
+-	char		key_source[MAX_STRING_LEN], *source = NULL;
++	char		key_source[MAX_STRING_LEN], *provider = NULL, *source = NULL;
+ 	char		key_logeventid[MAX_STRING_LEN], str_logeventid[8] /* for `regex_match_ex' */;
+ #endif
++#ifdef HAVE_WINEVT_H
++	EVT_HANDLE	eventlog6_render_context = NULL;
++	EVT_HANDLE	eventlog6_query = NULL;
++	zbx_uint64_t	eventlog6_firstid = 0;
++	zbx_uint64_t	eventlog6_lastid = 0;
++#endif
++
+ 	char		encoding[32];
+ 	char		tmp[16];
+ 
+@@ -1121,6 +1128,143 @@ static void	process_active_checks(char *
+ #endif	/* _WINDOWS */
+ 
+ 			if (FAIL == ret)
++			{
++				active_metrics[i].status = ITEM_STATUS_NOTSUPPORTED;
++				zabbix_log(LOG_LEVEL_WARNING, "Active check [%s] is not supported. Disabled.",
++						active_metrics[i].key);
++
++				process_value(server, port, CONFIG_HOSTNAME,
++						active_metrics[i].key_orig, ZBX_NOTSUPPORTED,
++						&active_metrics[i].lastlogsize, NULL, NULL, NULL, NULL, NULL, 0);
++			}
++		}
++		/* special processing for eventlog6 */
++		else if (0 == strncmp(active_metrics[i].key, "eventlog6[", 10))
++		{
++			ret = FAIL;
++
++#ifdef _WINDOWS
++#ifdef HAVE_WINEVT_H
++			do{ /* simple try realization */
++				if (2 != parse_command(active_metrics[i].key, NULL, 0, params, sizeof(params)))
++					break;
++
++				if (6 < num_param(params))
++					break;
++
++				if (0 != get_param(params, 1, filename, sizeof(filename)))
++					break;
++
++				if (0 != get_param(params, 2, pattern, sizeof(pattern)))
++					*pattern = '\0';
++
++				if (0 != get_param(params, 3, key_severity, sizeof(key_severity)))
++					*key_severity = '\0';
++
++				if (0 != get_param(params, 4, key_source, sizeof(key_source)))
++					*key_source = '\0';
++
++				if (0 != get_param(params, 5, key_logeventid, sizeof(key_logeventid)))
++					*key_logeventid = '\0';
++
++				if (0 != get_param(params, 6, maxlines_persec_str, sizeof(maxlines_persec_str)) ||
++						'\0' == *maxlines_persec_str)
++					maxlines_persec = CONFIG_MAX_LINES_PER_SECOND;
++				else if (MIN_VALUE_LINES > (maxlines_persec = atoi(maxlines_persec_str)) ||
++						MAX_VALUE_LINES < maxlines_persec)
++					break;
++
++				s_count = 0;
++				p_count = 0;
++				lastlogsize = active_metrics[i].lastlogsize;
++				/* "mtime" parameter is not used by "eventlog6" checks */
++
++				if (SUCCEED != initialize_eventlog6(filename, &lastlogsize, &eventlog6_firstid, &eventlog6_lastid, &eventlog6_render_context, &eventlog6_query))
++				{
++					finalize_eventlog6(&eventlog6_render_context, &eventlog6_query);
++					break;
++				}
++
++				while (SUCCEED == (ret = process_eventlog6(filename, &lastlogsize, &timestamp, &provider, &source, &severity, &value,
++					&logeventid, &eventlog6_firstid, &eventlog6_lastid, &eventlog6_render_context, &eventlog6_query)))
++				{
++					if (NULL == value) /* End of file. The eventlog could become empty, must save `lastlogsize'. */
++					{
++						active_metrics[i].lastlogsize = lastlogsize;
++						break;
++					}
++
++					switch (severity)
++					{
++						case EVENTLOG_SUCCESS:
++						case EVENTLOG_INFORMATION_TYPE:
++							severity = 1;
++							zbx_snprintf(str_severity, sizeof(str_severity), INFORMATION_TYPE);
++							break;
++						case EVENTLOG_WARNING_TYPE:
++							severity = 2;
++							zbx_snprintf(str_severity, sizeof(str_severity), WARNING_TYPE);
++							break;
++						case EVENTLOG_ERROR_TYPE:
++							severity = 4;
++							zbx_snprintf(str_severity, sizeof(str_severity), ERROR_TYPE);
++							break;
++						case EVENTLOG_AUDIT_FAILURE:
++							severity = 7;
++							zbx_snprintf(str_severity, sizeof(str_severity), AUDIT_FAILURE);
++							break;
++						case EVENTLOG_AUDIT_SUCCESS:
++							severity = 8;
++							zbx_snprintf(str_severity, sizeof(str_severity), AUDIT_SUCCESS);
++							break;
++					}
++
++					zbx_snprintf(str_logeventid, sizeof(str_logeventid), "%lu", logeventid);
++
++					if (SUCCEED == regexp_match_ex(regexps, regexps_num, value, pattern, ZBX_CASE_SENSITIVE) &&
++							SUCCEED == regexp_match_ex(regexps, regexps_num, str_severity,
++									key_severity, ZBX_IGNORE_CASE) &&
++							(('\0' == *key_source) ? 1 : (0 == strcmp(key_source, provider))) &&
++							SUCCEED == regexp_match_ex(regexps, regexps_num, str_logeventid,
++									key_logeventid, ZBX_CASE_SENSITIVE))
++					{
++						send_err = process_value(server, port, CONFIG_HOSTNAME,
++								active_metrics[i].key_orig, value, &lastlogsize,
++								NULL, &timestamp, provider, &severity, &logeventid, 1);
++						s_count++;
++					}
++					p_count++;
++
++					zbx_free(provider);
++					zbx_free(source);
++					zbx_free(value);
++
++					if (SUCCEED == send_err)
++						active_metrics[i].lastlogsize = lastlogsize;
++					else
++					{ /* buffer is full, stop processing active checks till the buffer is cleared */
++						lastlogsize = active_metrics[i].lastlogsize;
++						goto ret;
++					}
++
++					/* do not flood Zabbix server if file grows too fast */
++					if (s_count >= (maxlines_persec * active_metrics[i].refresh))
++						break;
++
++					/* do not flood local system if file grows too fast */
++					if (p_count >= (4 * maxlines_persec * active_metrics[i].refresh))
++						break;
++
++				} /* while processing an eventlog */
++				finalize_eventlog6(&eventlog6_render_context, &eventlog6_query);
++				break;
++
++			}
++			while (0); /* simple try realization */
++#endif	/* WINEVT_H */
++#endif	/* _WINDOWS */
++
++			if (FAIL == ret)
+ 			{
+ 				active_metrics[i].status = ITEM_STATUS_NOTSUPPORTED;
+ 				zabbix_log(LOG_LEVEL_WARNING, "Active check [%s] is not supported. Disabled.",
+diff -uNrp zabbix-2.0.6.orig/src/zabbix_agent/eventlog.c zabbix-2.0.6/src/zabbix_agent/eventlog.c
+--- zabbix-2.0.6.orig/src/zabbix_agent/eventlog.c	2013-04-22 21:31:48.000000000 +0900
++++ zabbix-2.0.6/src/zabbix_agent/eventlog.c	2013-07-24 13:16:04.603207930 +0900
+@@ -22,6 +22,35 @@
+ #include "log.h"
+ #include "eventlog.h"
+ 
++#ifdef HAVE_WINEVT_H
++#	define DEFAULT_EVENT_CONTENT_SIZE	256
++#	define WINEVENT_LEVEL_LOG_ALWAYS	0
++#	define WINEVENT_LEVEL_CRITICAL		1
++#	define WINEVENT_LEVEL_ERROR		2
++#	define WINEVENT_LEVEL_WARNING		3
++#	define WINEVENT_LEVEL_INFO		4
++#	define WINEVENT_LEVEL_VERBOSE		5
++
++static LPCWSTR RENDER_ITEMS[] = {
++  L"/Event/System/Provider/@Name",
++  L"/Event/System/Provider/@EventSourceName",
++  L"/Event/System/EventRecordID",
++  L"/Event/System/EventID",
++  L"/Event/System/Level",
++  L"/Event/System/Keywords",
++  L"/Event/System/TimeCreated/@SystemTime",
++};
++#  define RENDER_ITEMS_COUNT  (sizeof(RENDER_ITEMS) / sizeof(LPCWSTR))
++
++#  define VAR_PROVIDER_NAME(p)  (p[0].StringVal)
++#  define VAR_SOURCE_NAME(p)    (p[1].StringVal)
++#  define VAR_RECORD_NUMBER(p)  (p[2].UInt64Val)
++#  define VAR_EVENT_ID(p)       (p[3].UInt16Val)
++#  define VAR_LEVEL(p)          (p[4].ByteVal)
++#  define VAR_KEYWORDS(p)       (p[5].UInt64Val)
++#  define VAR_TIME_CREATED(p)   (p[6].FileTimeVal)
++#endif
++
+ #define MAX_INSERT_STRS 100
+ #define MAX_MSG_LENGTH 1024
+ 
+@@ -300,3 +329,506 @@ int	process_eventlog(const char *source,
+ 
+ 	return ret;
+ }
++
++#ifdef HAVE_WINEVT_H
++
++/* expand the string message from a specific event handler */
++static LPSTR expand_message6(LPCWSTR pname, EVT_HANDLE event)
++{
++	const char	*__function_name = "expand_message6";
++
++	LPWSTR		pmessage = NULL;
++	EVT_HANDLE	provider = NULL;
++	DWORD		require = 0;
++	LPSTR		out_message = NULL;
++	LPSTR		tmp_pname = NULL;
++
++	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __function_name);
++
++	if (NULL == (provider = EvtOpenPublisherMetadata(NULL, pname, NULL, 0, 0)))
++	{
++		tmp_pname = zbx_unicode_to_utf8(pname);
++		zabbix_log(LOG_LEVEL_WARNING, "Warning: %d: Provider could not be opened.(%s)", GetLastError(), tmp_pname);
++		zbx_free(tmp_pname);
++		goto finish;
++	}
++
++	if (!EvtFormatMessage(provider, event, 0, 0, NULL, EvtFormatMessageEvent, 0, NULL, &require) )
++	{
++		if (ERROR_INSUFFICIENT_BUFFER == GetLastError())
++		{
++			pmessage = zbx_malloc(pmessage, sizeof(WCHAR) * require);
++
++			if (!EvtFormatMessage(provider, event, 0, 0, NULL, EvtFormatMessageEvent, require, pmessage, &require))
++			{
++				zabbix_log(LOG_LEVEL_WARNING, "Warning: %d: Formatting message failed.", GetLastError());
++				goto finish;
++			}
++			out_message = zbx_unicode_to_utf8(pmessage);
++		}
++	}
++
++finish:
++	if (provider)
++		EvtClose(provider);
++	zbx_free(pmessage);
++
++	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%s", __function_name, out_message);
++
++	/* this out_message should be freed at somewhere out of function */
++	return out_message;
++}
++
++/* open eventlog using API 6 and return number of records */
++static int zbx_open_eventlog6(LPCWSTR wsource, zbx_uint64_t *lastlogsize, EVT_HANDLE *render_context,
++		zbx_uint64_t *FirstID, zbx_uint64_t *LastID)
++{
++	const char	*__function_name = "zbx_open_eventlog6";
++
++	EVT_HANDLE	log = NULL;
++	EVT_VARIANT	var;
++	EVT_HANDLE	tmp_all_event_query = NULL;
++	EVT_HANDLE	event_bookmark = NULL;
++	EVT_VARIANT*	renderedContent = NULL;
++	DWORD		status = 0;
++	DWORD		size_required = 0;
++	DWORD		size = DEFAULT_EVENT_CONTENT_SIZE;
++	DWORD		bookmarkedCount = 0;
++	zbx_uint64_t	numIDs = 0;
++	LPSTR		tmp_str = NULL;
++
++	int		ret = FAIL;
++
++	*FirstID = 0;
++	*LastID = 0;
++
++	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __function_name);
++
++	/* try to open the desired log */
++	if (NULL == (log = EvtOpenLog(NULL, wsource, EvtOpenChannelPath)))
++	{
++		tmp_str = zbx_unicode_to_utf8(wsource);
++		zabbix_log(LOG_LEVEL_WARNING, "Error: %d: cannot open log (%s).", GetLastError(), tmp_str);
++		goto finish;
++	}
++
++	/* obtain the number of records in the log */
++	if (!EvtGetLogInfo(log, EvtLogNumberOfLogRecords, sizeof(var), &var, &size_required) ) {
++		zabbix_log(LOG_LEVEL_WARNING, "Error: %d: cannot get log metrics (number).", GetLastError());
++		goto finish;
++	}
++	numIDs = var.UInt64Val;
++
++	/* get the number of the oldest record in the log                          */
++	/* "EvtGetLogInfo()" doesn't work properly with "EvtLogOldestRecordNumber" */
++	/* So, we have to get it from first eventlog's EventRecordID               */
++
++	/* create the system render */
++	if (NULL == (*render_context = EvtCreateRenderContext(RENDER_ITEMS_COUNT, RENDER_ITEMS, EvtRenderContextValues)))
++	{
++		zabbix_log(LOG_LEVEL_WARNING, "EvtCreateRenderContext failed: [%s]", strerror_from_system(GetLastError()));
++		goto finish;
++	}
++
++	/* get all eventlog by EvtQuery() */
++	tmp_all_event_query = EvtQuery(NULL, wsource, NULL, EvtQueryChannelPath);
++	if (NULL == tmp_all_event_query)
++	{
++		if (ERROR_EVT_CHANNEL_NOT_FOUND == (status = GetLastError()))
++		{
++			zabbix_log(LOG_LEVEL_WARNING, "EvtQuery channel missed: [%s]", strerror_from_system(status));
++		}
++		else
++		{
++			zabbix_log(LOG_LEVEL_WARNING, "EvtQuery failed: [%s]", strerror_from_system(status));
++		}
++		goto finish;
++	}
++	/* Get the entries and malloc the space requred. */
++	renderedContent = zbx_malloc(renderedContent, size);
++	if (!EvtNext(tmp_all_event_query, 1, &event_bookmark, INFINITE, 0, &size_required))
++	{
++		/* no data exist in eventlog */
++		*FirstID = 1;
++		*LastID = 1;
++		numIDs = 0;
++		*lastlogsize = 0;
++		ret = SUCCEED;
++		goto finish;
++	}
++	/* obtain the information from the selected events */
++	if (!EvtRender(*render_context, event_bookmark, EvtRenderEventValues, size, renderedContent, &size_required, &bookmarkedCount))
++	{
++		/* error handling if the information exceeds the space allocated */
++		if (ERROR_INSUFFICIENT_BUFFER != GetLastError())
++		{
++			zabbix_log(LOG_LEVEL_WARNING, "Warning: render_contexting failed.[%s]", strerror_from_system(GetLastError()));
++			goto finish;
++		}
++
++		renderedContent = (EVT_VARIANT*)zbx_realloc((void *)renderedContent, size_required);
++		size = size_required;
++
++		if (!EvtRender(*render_context, event_bookmark, EvtRenderEventValues, size, renderedContent, &size_required, &bookmarkedCount))
++		{
++			zabbix_log(LOG_LEVEL_WARNING, "Warning: render_contexting failed.[%s]", strerror_from_system(GetLastError()));
++			goto finish;
++		}
++	}
++	/* get first eventlog's EventRecordID and set it to *FirstID */
++	*FirstID = VAR_RECORD_NUMBER(renderedContent);
++	/* Existing process_eventlog() uses LastID as ((biggest ID of EventRecordID in existing eventlog) + 1) */
++	/* So, this LastID has also same meaning, though it's strange.                                         */
++	*LastID = *FirstID + numIDs;
++	if (*lastlogsize >= *LastID)
++	{
++		*lastlogsize = *FirstID - 1;
++		zabbix_log(LOG_LEVEL_DEBUG, "lastlogsize is too big, so it's changed to (FirstID - 1) value:%ld", *lastlogsize);
++	}
++	ret = SUCCEED;
++
++finish:
++	if (log)
++		EvtClose(log);
++	if (tmp_all_event_query)
++		EvtClose(tmp_all_event_query);
++	if (event_bookmark)
++		EvtClose(event_bookmark);
++	zbx_free(tmp_str);
++	zbx_free(renderedContent);
++	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%s FirstID:" ZBX_FS_UI64 " LastID:" ZBX_FS_UI64 " numIDs:" ZBX_FS_UI64,
++			__function_name, zbx_result_string(ret), *FirstID, *LastID, numIDs);
++
++	return ret;
++}
++
++/* get handles of eventlog */
++static int	zbx_get_handle_eventlog6(LPCWSTR wsource, zbx_uint64_t *lastlogsize, EVT_HANDLE *query)
++{
++	const char	*__function_name = "zbx_get_handle_eventlog6";
++
++	LPWSTR		event_query = NULL;
++	DWORD		status = 0;
++	LPSTR		tmp_str = NULL;
++
++	int		ret = FAIL;
++
++	zabbix_log(LOG_LEVEL_DEBUG, "In %s() previous lastlogsize:%ld", __function_name, *lastlogsize);
++
++	/* start building the query */
++	tmp_str = zbx_dsprintf(NULL, "Event/System[EventRecordID>%ld]", *lastlogsize);
++	event_query = zbx_utf8_to_unicode(tmp_str);
++
++	/* create the massive query for event on local computer*/
++	*query = EvtQuery(NULL, wsource, event_query, EvtQueryChannelPath);
++	if (NULL == *query)
++	{
++		if (ERROR_EVT_CHANNEL_NOT_FOUND == (status = GetLastError()))
++		{
++			zabbix_log(LOG_LEVEL_WARNING, "EvtQuery channel missed: [%s]", strerror_from_system(status));
++		}
++		else
++		{
++			zabbix_log(LOG_LEVEL_WARNING, "EvtQuery failed: [%s]", strerror_from_system(status));
++		}
++		goto finish;
++	}
++	ret = SUCCEED;
++
++finish:
++	zbx_free(tmp_str);
++	zbx_free(event_query);
++	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%s", __function_name, zbx_result_string(ret));
++
++	return ret;
++}
++
++/* obtain a particular message from a desired eventlog */
++static int	zbx_get_eventlog_message6(LPCWSTR wsource, zbx_uint64_t *which, unsigned short *out_severity, unsigned long *out_timestamp,
++		char **out_provider, char **out_source, char **out_message, unsigned long *out_eventid, EVT_HANDLE *render_context, EVT_HANDLE *query)
++{
++	const char		*__function_name = "zbx_get_eventlog_message6";
++
++	EVT_HANDLE		event_bookmark = NULL;
++	EVT_VARIANT*		renderedContent = NULL;
++	LPCWSTR			pprovider = NULL;
++	LPSTR			tmp_str = NULL;
++	DWORD			size = DEFAULT_EVENT_CONTENT_SIZE;
++	DWORD			bookmarkedCount = 0;
++	DWORD			require = 0;
++	const zbx_uint64_t	sec_1970 = 116444736000000000;
++	const zbx_uint64_t	success_audit = 0x20000000000000;
++	const zbx_uint64_t	failure_audit = 0x10000000000000;
++	zbx_uint64_t		keywords;
++
++	int	ret = FAIL;
++
++	zabbix_log(LOG_LEVEL_DEBUG, "In %s() lastlogsize:" ZBX_FS_UI64, __function_name, *which);
++
++	if (NULL == *query)
++	{
++		zabbix_log(LOG_LEVEL_WARNING, "No EvtQuery handle");
++		goto finish;
++	}
++
++	/* Get the entries and malloc the space requred. */
++	renderedContent = zbx_malloc(renderedContent, size);
++	if (!EvtNext(*query, 1, &event_bookmark, INFINITE, 0, &require))
++	{
++		zabbix_log(LOG_LEVEL_WARNING, "Warning: EvtNext failed: [%s] lastlogsize:" ZBX_FS_UI64, strerror_from_system(GetLastError()), *which);
++		goto finish;
++	}
++	/* obtain the information from the selected events */
++	if (!EvtRender(*render_context, event_bookmark, EvtRenderEventValues, size, renderedContent, &require, &bookmarkedCount) )
++	{
++		/* error handling if the information exceeds the space allocated */
++		if (ERROR_INSUFFICIENT_BUFFER != GetLastError())
++		{
++			zabbix_log(LOG_LEVEL_WARNING, "Warning: render_contexting failed.[%s]", strerror_from_system(GetLastError()));
++			goto finish;
++		}
++
++		renderedContent = (EVT_VARIANT*)zbx_realloc((void *)renderedContent, require);
++		size = require;
++
++		if (!EvtRender(*render_context, event_bookmark, EvtRenderEventValues, size, renderedContent, &require, &bookmarkedCount))
++		{
++			zabbix_log(LOG_LEVEL_WARNING, "Warning: render_contexting failed.[%s]", strerror_from_system(GetLastError()));
++			goto finish;
++		}
++	}
++	/* start to obtain the information for the agent to return */
++	/* obtain the current provider */
++	pprovider = VAR_PROVIDER_NAME(renderedContent);
++	*out_provider = zbx_unicode_to_utf8(pprovider);
++
++	if ( NULL != VAR_SOURCE_NAME(renderedContent) )
++	{
++		*out_source = zbx_unicode_to_utf8(VAR_SOURCE_NAME(renderedContent));
++	}
++
++	/* set the event severity */
++	keywords = VAR_KEYWORDS(renderedContent) & (success_audit | failure_audit);
++	if ( success_audit == keywords )
++	{
++		*out_severity = EVENTLOG_AUDIT_SUCCESS;
++	}
++	else if ( failure_audit == keywords )
++	{
++		*out_severity = EVENTLOG_AUDIT_FAILURE;
++	}
++	else
++	{
++		switch(VAR_LEVEL(renderedContent))
++		{
++		case WINEVENT_LEVEL_LOG_ALWAYS:
++		case WINEVENT_LEVEL_INFO:
++		case WINEVENT_LEVEL_VERBOSE:
++			*out_severity = EVENTLOG_INFORMATION_TYPE;
++			break;
++		case WINEVENT_LEVEL_CRITICAL:
++		case WINEVENT_LEVEL_ERROR:
++			*out_severity = EVENTLOG_ERROR_TYPE;
++			break;
++		case WINEVENT_LEVEL_WARNING:
++			*out_severity = EVENTLOG_WARNING_TYPE;
++			break;
++		default:
++			*out_severity = EVENTLOG_INFORMATION_TYPE;
++			break;
++		}
++	}
++
++	/* obtain the time stamp - code inhereted */
++	*out_timestamp = (unsigned long)((VAR_TIME_CREATED(renderedContent) - sec_1970) / 10000000);
++	*out_eventid = VAR_EVENT_ID(renderedContent);
++
++	/* obtain the event message */
++	*out_message = expand_message6(pprovider, event_bookmark);
++	tmp_str = zbx_unicode_to_utf8(wsource);
++	if (VAR_RECORD_NUMBER(renderedContent) != *which)
++	{
++		zabbix_log(LOG_LEVEL_WARNING, "In Eventlog Name(%s): Expected Event Record ID(" ZBX_FS_UI64 ") is not equal as real Event Record ID(" ZBX_FS_UI64 ")."
++				" Overwriting expected Event Record ID by real Event Record ID.",
++				tmp_str, *which, VAR_RECORD_NUMBER(renderedContent));
++		*which = VAR_RECORD_NUMBER(renderedContent);
++	}
++	/* some event don't have enough information for making event message */
++	if (NULL == *out_message)
++	{
++		*out_message = zbx_strdcatf(*out_message, "The description for Event ID (%lu) in Source (%s) cannot be found."
++				" The local computer may not have the necessary registry information or message DLL files to"
++				" display messages from a remote computer.", *out_eventid, NULL == *out_provider ? "" : *out_provider);
++		zabbix_log(LOG_LEVEL_WARNING, "In Eventlog Name(%s) at Event Record ID(" ZBX_FS_UI64 "): %s",
++				tmp_str, *which, *out_message);
++	}
++
++	ret = SUCCEED;
++
++finish:
++	if (event_bookmark)
++		EvtClose(event_bookmark);
++	zbx_free(tmp_str);
++	zbx_free(renderedContent);
++	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%s", __function_name, zbx_result_string(ret));
++
++	return ret;
++}
++
++/* Initialize event logs with Windows API version 6 */
++int	initialize_eventlog6(const char *source, zbx_uint64_t *lastlogsize, zbx_uint64_t *FirstID, zbx_uint64_t *LastID, EVT_HANDLE *render_context, EVT_HANDLE *query)
++{
++	const char	*__function_name = "initialize_eventlog6";
++
++	LPWSTR		wsource = NULL;
++	OSVERSIONINFO	versionInfo;
++
++	int	ret = FAIL;
++
++	assert(lastlogsize);
++	assert(FirstID);
++	assert(LastID);
++	assert(render_context);
++	assert(query);
++
++	zabbix_log(LOG_LEVEL_DEBUG, "In %s() source:'%s' previous lastlogsize:%ld",
++			   __function_name, source, *lastlogsize);
++
++	versionInfo.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
++	GetVersionEx(&versionInfo);
++
++	if (NULL == source || '\0' == *source)
++	{
++		zabbix_log(LOG_LEVEL_WARNING, "In %s() previous lastlogsize:%ld", __function_name, *lastlogsize);
++		zabbix_log(LOG_LEVEL_WARNING, "Warning: Can't open eventlog with empty name.");
++		goto finish;
++	}
++
++	/* eventlog6 logic cannot work before Windows Vista or Windows Server 2008 */
++	if (versionInfo.dwMajorVersion < 6 )
++	{
++		zabbix_log(LOG_LEVEL_WARNING, "In %s() source:'%s' previous lastlogsize:%ld", __function_name, source, *lastlogsize);
++		zabbix_log(LOG_LEVEL_WARNING, "Eventing 6 API is not availabe in before Windows Vista or Windows Server 2008");
++		goto finish;
++	}
++
++	wsource = zbx_utf8_to_unicode(source);
++
++	/* find out how far into the event log file we are */
++	if (SUCCEED != zbx_open_eventlog6(wsource, lastlogsize, render_context, FirstID, LastID))
++	{
++		zabbix_log(LOG_LEVEL_ERR, "Error: Can't open eventlog '%s'", source);
++		goto finish;
++	}
++
++	if (SUCCEED != zbx_get_handle_eventlog6(wsource, lastlogsize, query))
++	{
++		zabbix_log(LOG_LEVEL_ERR, "Error: Can't get eventlog handle '%s'", source);
++		goto finish;
++	}
++
++	ret = SUCCEED;
++
++finish:
++	zbx_free(wsource);
++	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%s", __function_name, zbx_result_string(ret));
++
++	return ret;
++}
++
++/* Processing event logs with Windows API version 6 */
++int	process_eventlog6(const char *source, zbx_uint64_t *lastlogsize, unsigned long *out_timestamp, char **out_provider, char **out_source,
++		unsigned short *out_severity, char **out_message, unsigned long	*out_eventid, zbx_uint64_t *FirstID,
++		zbx_uint64_t *LastID, EVT_HANDLE *render_context, EVT_HANDLE *query)
++{
++	const char	*__function_name = "process_eventlog6";
++
++	zbx_uint64_t	i = 0;
++	zbx_uint64_t	reading_startpoint = 0;
++	LPWSTR		wsource = NULL;
++
++	int		ret = FAIL;
++
++	assert(lastlogsize);
++	assert(out_timestamp);
++	assert(out_provider);
++	assert(out_source);
++	assert(out_severity);
++	assert(out_message);
++	assert(out_eventid);
++	assert(FirstID);
++	assert(LastID);
++	assert(render_context);
++	assert(query);
++
++	*out_timestamp	= 0;
++	*out_provider	= NULL;
++	*out_source	= NULL;
++	*out_severity	= 0;
++	*out_message	= NULL;
++	*out_eventid	= 0;
++
++	zabbix_log(LOG_LEVEL_DEBUG, "In %s() source:'%s' previous lastlogsize:%ld FirstID:" ZBX_FS_UI64 " LastID:" ZBX_FS_UI64,
++			   __function_name, source, *lastlogsize, *FirstID, *LastID);
++
++	wsource = zbx_utf8_to_unicode(source);
++
++	/* update counters */
++	/* if *lastlogsize is between *FirstID and *LastID, increment it */
++	if (*lastlogsize >= *FirstID && *lastlogsize < *LastID)
++		reading_startpoint = (*lastlogsize) + 1;
++	else
++		reading_startpoint = *FirstID;
++
++	/* If every eventlog is read, this function returns SUCCEED with *out_message = NULL */
++	if (reading_startpoint == *LastID)
++	{
++		ret = SUCCEED;
++		goto finish;
++	}
++
++	/* cycle through the new records */
++	for (i = reading_startpoint; i < *LastID; i++)
++	{
++		if (SUCCEED == zbx_get_eventlog_message6(wsource, &i, out_severity, out_timestamp, out_provider, out_source, out_message, out_eventid, render_context, query))
++		{
++			*lastlogsize = i;
++			ret = SUCCEED;
++			goto finish;
++		}
++	}
++
++finish:
++	zbx_free(wsource);
++	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%s", __function_name, zbx_result_string(ret));
++
++	return ret;
++}
++
++/* finalizing eventlog6, free handles of eventlog */
++int	finalize_eventlog6(EVT_HANDLE *render_context, EVT_HANDLE *query)
++{
++	const char	*__function_name = "finalize_eventlog6";
++
++	int	ret = FAIL;
++
++	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __function_name);
++
++	if (NULL != *query)
++	{
++		EvtClose(*query);
++		*query = NULL;
++	}
++	if (NULL != *render_context)
++	{
++		EvtClose(*render_context);
++		*render_context = NULL;
++	}
++	ret = SUCCEED;
++
++	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%s", __function_name, zbx_result_string(ret));
++
++	return ret;
++}
++
++#endif	/* HAVE_WINEVT_H */
+diff -uNrp zabbix-2.0.6.orig/src/zabbix_agent/eventlog.h zabbix-2.0.6/src/zabbix_agent/eventlog.h
+--- zabbix-2.0.6.orig/src/zabbix_agent/eventlog.h	2013-04-22 21:31:48.000000000 +0900
++++ zabbix-2.0.6/src/zabbix_agent/eventlog.h	2013-07-24 13:16:04.603207930 +0900
+@@ -24,6 +24,39 @@
+ #	error "This module is only available for Windows OS"
+ #endif
+ 
++#ifndef WINVER
++#	error "WINVER is not defined"
++#elif WINVER >= 0x0600
++#	define HAVE_WINEVT_H 1
++#	include "winevt.h"
++int initialize_eventlog6(
++	const char	*source,
++	zbx_uint64_t	*lastlogsize,
++	zbx_uint64_t	*FirstID,
++	zbx_uint64_t	*LastID,
++	EVT_HANDLE	*render_context,
++	EVT_HANDLE	*query);
++
++int process_eventlog6(
++	const char	*source,
++	zbx_uint64_t	*lastlogsize,
++	unsigned long	*out_timestamp,
++	char		**out_provider,
++	char		**out_source,
++	unsigned short	*out_severity,
++	char		**out_message,
++	unsigned long	*out_eventid,
++	zbx_uint64_t	*FirstID,
++	zbx_uint64_t	*LastID,
++	EVT_HANDLE	*render_context,
++	EVT_HANDLE	*query);
++
++int finalize_eventlog6(
++	EVT_HANDLE	*render_context,
++	EVT_HANDLE	*query);
++
++#endif
++
+ int	process_eventlog(const char *source, zbx_uint64_t *lastlogsize, unsigned long *out_timestamp,
+ 		char **out_source, unsigned short *out_severity, char **out_message, unsigned long *out_eventid,
+ 		unsigned char skip_old_data);
+diff -uNrp zabbix-2.0.6.orig/src/zabbix_server/trapper/active.c zabbix-2.0.6/src/zabbix_server/trapper/active.c
+--- zabbix-2.0.6.orig/src/zabbix_server/trapper/active.c	2013-04-22 21:31:48.000000000 +0900
++++ zabbix-2.0.6/src/zabbix_server/trapper/active.c	2013-07-24 13:16:04.603207930 +0900
+@@ -411,7 +411,7 @@ int	send_list_of_active_checks_json(zbx_
+ 
+ 			/* eventlog[filename,pattern,severity,source,logeventid,maxlinespersec] */
+ 
+-			if (0 != strncmp(key, "eventlog[", 9))
++			if (0 != strncmp(key, "eventlog[", 9) && 0 != strncmp(key, "eventlog6[", 10))
+ 				break;
+ 
+ 			if (2 != parse_command(key, NULL, 0, params, sizeof(params)))
